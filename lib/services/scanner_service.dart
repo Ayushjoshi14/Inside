@@ -84,7 +84,8 @@ class ScannerService extends ChangeNotifier {
   Future<ScanResult?> processImageAndAnalyze({
     File? imageFile,
     String? directOcrText,
-    String productName = "Food Product",
+    String? productName,
+    String? productCategory,
   }) async {
     _errorMessage = null;
 
@@ -134,7 +135,11 @@ class ScannerService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final result = await _apiClient.analyzeText(ocrText, productName: productName);
+      final result = await _apiClient.analyzeText(
+        ocrText,
+        productName: productName,
+        productCategory: productCategory,
+      );
       _lastResult = result;
       _step = ScanStep.complete;
       await _authService.decrementScan();

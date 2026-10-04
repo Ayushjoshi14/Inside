@@ -27,13 +27,16 @@ def get_user_scan_history(
         except Exception:
             ing_list = []
 
+        ing_count = s.ingredient_count if (s.ingredient_count is not None and s.ingredient_count > 0) else len(ing_list)
+
         result.append(HistoryItemResponse(
             id=s.id,
             product_name=s.product_name,
+            product_category=s.product_category or "Food Product",
             overall_status=s.overall_status,
             overall_score=s.overall_score,
             summary=s.summary,
-            ingredient_count=len(ing_list),
+            ingredient_count=ing_count,
             created_at=s.created_at.isoformat()
         ))
     return result
@@ -76,6 +79,7 @@ def get_scan_detail(
     return ScanAnalysisResult(
         scan_id=scan.id,
         product_name=scan.product_name,
+        product_category=scan.product_category or "Food Product",
         overall_status=scan.overall_status,
         score=scan.overall_score,
         summary=scan.summary or "",

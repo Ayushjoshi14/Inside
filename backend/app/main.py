@@ -5,13 +5,14 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from backend.app.config import settings
-from backend.app.database.session import engine, Base, SessionLocal
+from backend.app.database.session import engine, Base, SessionLocal, apply_db_migrations
 from backend.app.models.entities import Ingredient
 from backend.app.api.auth_router import router as auth_router
 from backend.app.api.profile_router import router as profile_router
 from backend.app.api.scan_router import router as scan_router
 from backend.app.api.history_router import router as history_router
 from backend.app.api.billing_router import router as billing_router
+from backend.app.api.payment_router import router as payment_router
 from backend.app.api.legal_router import router as legal_router
 
 logging.basicConfig(level=logging.INFO)
@@ -20,6 +21,36 @@ logger = logging.getLogger("inside")
 def seed_database_if_needed():
     db = SessionLocal()
     try:
+        # 1. Ensure default local/guest user exists
+        default_user = db.query(User).filter(User.id == 1).first()
+        if not default_user:
+            default_user = db.query(User).filter(User.email == "user@insideapp.in").first()
+        if not default_user:
+            from backend.app.security.auth import hash_password
+            default_user = User(
+                id=1,
+                email="user@insideapp.in",
+                hashed_password=hash_password("inside_app_default_secure_pass"),
+                is_active=True,
+                is_premium=False,
+                free_scans_used=0,
+                scans_count=0
+            )
+            db.add(default_user)
+            db.commit()
+            db.refresh(default_user)
+            profile = UserProfile(
+                user_id=default_user.id,
+                name="Friend",
+                diet_preference="NONE",
+                avoid_ingredients="[]",
+                allergens="[]"
+            )
+            db.add(profile)
+            db.commit()
+            logger.info("Initialized default user (id=1, email=user@insideapp.in)")
+
+        # 2. Seed ingredients
         count = db.query(Ingredient).count()
         if count == 0:
             seed_file = os.path.join(os.path.dirname(__file__), "seed_data", "ingredients.json")
@@ -56,6 +87,7 @@ def seed_database_if_needed():
 async def lifespan(app: FastAPI):
     # Startup: create tables and seed
     Base.metadata.create_all(bind=engine)
+    apply_db_migrations()
     seed_database_if_needed()
     yield
 
@@ -80,6 +112,8 @@ app.include_router(profile_router)
 app.include_router(scan_router)
 app.include_router(history_router)
 app.include_router(billing_router)
+app.include_router(payment_router)
+app.include_router(payment_router, prefix="/api")
 app.include_router(legal_router)
 
 @app.get("/")

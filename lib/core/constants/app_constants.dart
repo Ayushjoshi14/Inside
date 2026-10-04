@@ -1,18 +1,25 @@
 class AppConstants {
   static const String appName = 'Inside';
   static const String appTagline = "Know what's inside.";
-  static const String premiumProductId = 'premium_lifetime';
+  static const String premiumProductId = 'inside_premium_lifetime';
   static const String premiumPrice = '₹199';
   static const String premiumTitle = 'Inside Premium — Lifetime';
 
-  // API Config
-  // 10.0.2.2 is the standard loopback IP to host machine from Android Emulator.
-  // 127.0.0.1 for desktop/web or real device IP.
-  static const String defaultApiUrl = 'http://10.0.2.2:8000';
+  // API Config:
+  // For physical Android device testing over local Wi-Fi, use your Windows PC's IPv4 address:
+  // e.g. 'http://192.168.0.104:8000'
+  // (Run 'ipconfig' in Windows PowerShell to see your IPv4 address if your Wi-Fi changes).
+  //
+  // You can also pass custom URL at build/run time:
+  // flutter run --dart-define=API_BASE_URL=http://192.168.0.104:8000
+  static const String defaultApiUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'http://192.168.0.104:8000',
+  );
   static const String fallbackLocalApiUrl = 'http://127.0.0.1:8000';
 
   // Free Tier
-  static const int freeScanLimit = 5;
+  static const int freeScanLimit = 3;
 
   // Disclaimer
   static const String medicalDisclaimer =

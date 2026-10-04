@@ -49,6 +49,28 @@ class ResultScreen extends StatelessWidget {
                     status: result.overallStatus,
                   ),
                   const SizedBox(height: 12),
+                  if (result.productName.isNotEmpty && result.productName != 'Scanned Product' && result.productName != 'Unknown Product') ...[
+                    Text(
+                      result.productName,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      result.productCategory,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
                   Text(
                     result.summary,
                     textAlign: TextAlign.center,

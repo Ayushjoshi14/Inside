@@ -16,28 +16,37 @@ class MainNavigationShell extends StatefulWidget {
   const MainNavigationShell({super.key});
 
   @override
-  State<MainNavigationShell> createState() => _MainNavigationShellState();
+  State<MainNavigationShell> createState() => MainNavigationShellState();
 }
 
-class _MainNavigationShellState extends State<MainNavigationShell> {
+class MainNavigationShellState extends State<MainNavigationShell> {
   int _currentIndex = 0;
+  final GlobalKey<HomeScreenState> _homeKey = GlobalKey<HomeScreenState>();
+  final GlobalKey<HistoryScreenState> _historyKey = GlobalKey<HistoryScreenState>();
 
-  final List<Widget> _screens = const [
-    HomeScreen(),
-    HistoryScreen(),
-    ProfileScreen(),
-  ];
+  void switchToTab(int idx) {
+    setState(() => _currentIndex = idx);
+    if (idx == 0) {
+      _homeKey.currentState?.loadRecents();
+    } else if (idx == 1) {
+      _historyKey.currentState?.loadHistory();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
-        children: _screens,
+        children: [
+          HomeScreen(key: _homeKey),
+          HistoryScreen(key: _historyKey),
+          const ProfileScreen(),
+        ],
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
-        onDestinationSelected: (idx) => setState(() => _currentIndex = idx),
+        onDestinationSelected: switchToTab,
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.home_outlined),
@@ -64,19 +73,19 @@ class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  State<HomeScreen> createState() => HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class HomeScreenState extends State<HomeScreen> {
   List<ScanResult> _recentScans = [];
 
   @override
   void initState() {
     super.initState();
-    _loadRecents();
+    loadRecents();
   }
 
-  Future<void> _loadRecents() async {
+  Future<void> loadRecents() async {
     final list = await LocalStorage.getCachedHistory();
     if (mounted) {
       setState(() {
@@ -103,7 +112,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const ScannerScreen()),
-    ).then((_) => _loadRecents());
+    ).then((_) {
+      if (!mounted) return;
+      loadRecents();
+      final nav = context.findAncestorStateOfType<MainNavigationShellState>();
+      nav?._historyKey.currentState?.loadHistory();
+    });
   }
 
   @override
@@ -262,8 +276,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 if (_recentScans.isNotEmpty)
                   TextButton(
                     onPressed: () {
-                      final nav = context.findAncestorStateOfType<_MainNavigationShellState>();
-                      nav?.setState(() => nav._currentIndex = 1);
+                      final nav = context.findAncestorStateOfType<MainNavigationShellState>();
+                      nav?.switchToTab(1);
                     },
                     child: const Text(
                       "View all",
@@ -334,7 +348,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    timeStr,
+                    "${scan.productCategory} • $timeStr",
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontSize: 12,
                       color: AppColors.textSecondary,

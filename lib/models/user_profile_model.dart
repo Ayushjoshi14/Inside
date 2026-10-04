@@ -18,7 +18,7 @@ class UserProfile {
     this.allergens = const [],
     this.isPremium = false,
     this.scansCount = 0,
-    this.scansLeft = 5,
+    this.scansLeft = 3,
   });
 
   factory UserProfile.fromJson(Map<String, dynamic> json) {
@@ -37,7 +37,7 @@ class UserProfile {
           [],
       isPremium: json['is_premium'] ?? false,
       scansCount: json['scans_count'] ?? 0,
-      scansLeft: json['scans_left'] ?? 5,
+      scansLeft: json['scans_left'] ?? 3,
     );
   }
 

@@ -13,7 +13,7 @@ class AuthService extends ChangeNotifier {
   bool get isLoading => _isLoading;
   bool get isAuthenticated => _isAuthenticated;
   bool get isPremium => _profile?.isPremium ?? false;
-  int get scansLeft => _profile?.scansLeft ?? 5;
+  int get scansLeft => _profile?.scansLeft ?? 3;
 
   Future<void> init() async {
     _isLoading = true;
@@ -33,7 +33,7 @@ class AuthService extends ChangeNotifier {
         name: 'Friend',
         isPremium: isPrem,
         scansCount: scans,
-        scansLeft: isPrem ? 999999 : (5 - scans).clamp(0, 5),
+        scansLeft: isPrem ? 999999 : (3 - scans).clamp(0, 3),
       );
       await LocalStorage.saveProfile(_profile!);
     }
@@ -132,7 +132,7 @@ class AuthService extends ChangeNotifier {
     if (_profile == null) return;
     await LocalStorage.incrementScansCount();
     final newCount = _profile!.scansCount + 1;
-    final newLeft = _profile!.isPremium ? 999999 : (5 - newCount).clamp(0, 5);
+    final newLeft = _profile!.isPremium ? 999999 : (3 - newCount).clamp(0, 3);
     _profile = _profile!.copyWith(scansCount: newCount, scansLeft: newLeft);
     await LocalStorage.saveProfile(_profile!);
     notifyListeners();

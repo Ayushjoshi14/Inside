@@ -1,8 +1,11 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import '../../services/scanner_service.dart';
+import '../analysis/result_screen.dart';
 
 class ScannerScreen extends StatefulWidget {
   const ScannerScreen({super.key});
@@ -88,8 +91,15 @@ class _ScannerScreenState extends State<ScannerScreen> {
         return;
       }
 
-      // Calculate score
-      final score = _calculateScore(extractedText);
+      // Process and analyze with backend / food science engine
+      if (!mounted) return;
+      final scannerService = Provider.of<ScannerService>(context, listen: false);
+      final result = await scannerService.processImageAndAnalyze(
+        imageFile: _capturedImage,
+        directOcrText: extractedText,
+      );
+
+      final score = result?.score ?? _calculateScore(extractedText);
 
       if (!mounted) return;
 
@@ -99,7 +109,13 @@ class _ScannerScreenState extends State<ScannerScreen> {
         _isAnalyzing = false;
       });
 
-      _showResult();
+      if (result != null) {
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => ResultScreen(result: result)),
+        );
+      } else {
+        _showResult();
+      }
     } catch (e) {
       if (!mounted) return;
 

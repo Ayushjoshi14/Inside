@@ -121,8 +121,8 @@ def split_into_ingredients(section_text: str) -> List[str]:
         # If ends with period like "Salt." remove it
         if t_cleaned.endswith("."):
             t_cleaned = t_cleaned[:-1].strip()
-        # Ignore empty or ultra-short junk
-        if len(t_cleaned) > 1 and not re.match(r"^[\d\.\s\%]+$", t_cleaned):
+        # Ignore empty, pure symbols, or ultra-short junk
+        if len(t_cleaned) > 1 and not re.match(r"^[\d\.\s\%]+$", t_cleaned) and re.search(r"[a-zA-Z]", t_cleaned):
             results.append(t_cleaned)
             
     return results

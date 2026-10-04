@@ -21,8 +21,8 @@ def verify_google_play_purchase(
     - Unverified or cancelled purchases
     - Fake tokens in production environment
     """
-    if product_id != settings.LIFETIME_PRODUCT_ID:
-        return False, f"Invalid product ID: {product_id}. Expected {settings.LIFETIME_PRODUCT_ID}"
+    if product_id not in [settings.LIFETIME_PRODUCT_ID, settings.PREMIUM_PRODUCT_ID, "premium_lifetime", "inside_premium_lifetime"]:
+        return False, f"Invalid product ID: {product_id}."
 
     # Check if this token was already used by another user
     existing_purchase = db.query(PurchaseVerification).filter(

@@ -18,7 +18,7 @@ def get_user_profile(user: User = Depends(get_current_user), db: Session = Depen
         db.commit()
         db.refresh(profile)
 
-    scans_left = 999999 if user.is_premium else max(0, settings.FREE_SCAN_LIMIT - user.scans_count)
+    scans_left = 999999 if user.is_premium else max(0, settings.FREE_SCAN_LIMIT - user.free_scans_used)
 
     return ProfileResponse(
         user_id=user.id,
@@ -28,6 +28,7 @@ def get_user_profile(user: User = Depends(get_current_user), db: Session = Depen
         avoid_ingredients=profile.avoid_list,
         allergens=profile.allergens_list,
         is_premium=user.is_premium,
+        free_scans_used=user.free_scans_used,
         scans_count=user.scans_count,
         scans_left=scans_left
     )
@@ -58,7 +59,7 @@ def update_user_profile(
     db.commit()
     db.refresh(profile)
 
-    scans_left = 999999 if user.is_premium else max(0, settings.FREE_SCAN_LIMIT - user.scans_count)
+    scans_left = 999999 if user.is_premium else max(0, settings.FREE_SCAN_LIMIT - user.free_scans_used)
 
     return ProfileResponse(
         user_id=user.id,
@@ -68,6 +69,7 @@ def update_user_profile(
         avoid_ingredients=profile.avoid_list,
         allergens=profile.allergens_list,
         is_premium=user.is_premium,
+        free_scans_used=user.free_scans_used,
         scans_count=user.scans_count,
         scans_left=scans_left
     )

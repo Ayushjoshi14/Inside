@@ -10,31 +10,47 @@ class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
 
   @override
-  State<HistoryScreen> createState() => _HistoryScreenState();
+  State<HistoryScreen> createState() => HistoryScreenState();
 }
 
-class _HistoryScreenState extends State<HistoryScreen> {
+class HistoryScreenState extends State<HistoryScreen> with WidgetsBindingObserver {
   List<ScanResult> _history = [];
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadHistory();
+    WidgetsBinding.instance.addObserver(this);
+    loadHistory();
   }
 
-  Future<void> _loadHistory() async {
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      loadHistory();
+    }
+  }
+
+  Future<void> loadHistory() async {
     setState(() => _isLoading = true);
     final list = await LocalStorage.getCachedHistory();
-    setState(() {
-      _history = list;
-      _isLoading = false;
-    });
+    if (mounted) {
+      setState(() {
+        _history = list;
+        _isLoading = false;
+      });
+    }
   }
 
   void _deleteItem(int index) async {
     await LocalStorage.deleteScanFromHistory(index);
-    _loadHistory();
+    loadHistory();
   }
 
   void _clearAll() async {
@@ -60,7 +76,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
     if (confirmed == true) {
       await LocalStorage.clearHistory();
-      _loadHistory();
+      loadHistory();
     }
   }
 
@@ -84,7 +100,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           : _history.isEmpty
               ? _buildEmptyState()
               : RefreshIndicator(
-                  onRefresh: _loadHistory,
+                  onRefresh: loadHistory,
                   child: ListView.builder(
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                     itemCount: _history.length,
@@ -113,8 +129,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   Widget _buildHistoryCard(ScanResult item) {
-    final timeStr = DateFormat('h:mm a').format(item.createdAt);
-    final dateStr = DateFormat('MMM d').format(item.createdAt);
+    final dateTimeStr = DateFormat('MMM d, h:mm a').format(item.createdAt);
+    final count = item.ingredients.length;
+    final ingredientText = count == 1 ? "1 ingredient" : "$count ingredients";
+    final categoryText = item.productCategory.isNotEmpty ? item.productCategory : "Food Product";
 
     return InkWell(
       onTap: () {
@@ -164,7 +182,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    "${item.ingredients.length} ingredients • $dateStr, $timeStr",
+                    "$categoryText • $ingredientText • $dateTimeStr",
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontSize: 12,
                       color: AppColors.textSecondary,

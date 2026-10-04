@@ -5,6 +5,7 @@ import 'ingredient_model.dart';
 class ScanResult {
   final int? scanId;
   final String productName;
+  final String productCategory;
   final String overallStatus; // 'GOOD', 'CAUTION', 'AVOID'
   final int score; // 0 to 100
   final String summary;
@@ -17,6 +18,7 @@ class ScanResult {
   ScanResult({
     this.scanId,
     required this.productName,
+    this.productCategory = 'Food Product',
     required this.overallStatus,
     required this.score,
     required this.summary,
@@ -31,6 +33,7 @@ class ScanResult {
     return ScanResult(
       scanId: json['scan_id'],
       productName: json['product_name'] ?? 'Scanned Product',
+      productCategory: json['product_category'] ?? json['productCategory'] ?? 'Food Product',
       overallStatus: (json['overall_status'] ?? 'GOOD').toString().toUpperCase(),
       score: json['score'] ?? 75,
       summary: json['summary'] ?? '',
@@ -57,6 +60,7 @@ class ScanResult {
     return {
       'scan_id': scanId,
       'product_name': productName,
+      'product_category': productCategory,
       'overall_status': overallStatus,
       'score': score,
       'summary': summary,

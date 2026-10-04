@@ -4,6 +4,7 @@ from typing import List, Dict, Any, Tuple, Optional
 from sqlalchemy.orm import Session
 from backend.app.models.entities import Ingredient, CachedIngredientAnalysis, UserProfile
 from backend.app.services.normalization import normalize_ingredient_name
+from backend.app.services.product_detector import resolve_product_name_and_category
 from backend.app.ai.gemini_service import analyze_unknown_ingredients_with_ai
 
 logger = logging.getLogger(__name__)
@@ -76,7 +77,10 @@ def evaluate_personalized_status(
 def analyze_ingredients_list(
     db: Session,
     raw_ingredients: List[str],
-    profile: Optional[UserProfile] = None
+    profile: Optional[UserProfile] = None,
+    provided_product_name: Optional[str] = None,
+    provided_product_category: Optional[str] = None,
+    raw_ocr_text: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Core hybrid analysis pipeline:
@@ -278,7 +282,16 @@ def analyze_ingredients_list(
         "Check manufacturer label for latest formulation updates."
     ]
 
+    detected_name, detected_category = resolve_product_name_and_category(
+        provided_name=provided_product_name,
+        provided_category=provided_product_category,
+        ocr_text=raw_ocr_text,
+        parsed_ingredients=raw_ingredients
+    )
+
     return {
+        "product_name": detected_name,
+        "product_category": detected_category,
         "overall_status": overall_status,
         "score": score,
         "summary": summary,

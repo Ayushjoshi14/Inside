@@ -1,6 +1,6 @@
 import datetime
 import json
-from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, ForeignKey, Float
+from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, ForeignKey, Float, CheckConstraint
 from sqlalchemy.orm import relationship
 from backend.app.database.session import Base
 
@@ -9,19 +9,24 @@ def get_utc_now():
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (
+        CheckConstraint("free_scans_used >= 0 AND (free_scans_used <= 3 OR is_premium = 1)", name="check_free_scans_limit"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String(255), unique=True, index=True, nullable=False)
     hashed_password = Column(String(255), nullable=False)
     is_active = Column(Boolean, default=True)
     is_premium = Column(Boolean, default=False)
-    scans_count = Column(Integer, default=0)
+    free_scans_used = Column(Integer, default=0, nullable=False)
+    scans_count = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime, default=get_utc_now)
     premium_granted_at = Column(DateTime, nullable=True)
 
     profile = relationship("UserProfile", back_populates="user", uselist=False, cascade="all, delete-orphan")
     scans = relationship("ScanHistory", back_populates="user", cascade="all, delete-orphan")
     purchases = relationship("PurchaseVerification", back_populates="user", cascade="all, delete-orphan")
+    payments = relationship("Payment", back_populates="user", cascade="all, delete-orphan")
 
 class UserProfile(Base):
     __tablename__ = "user_profiles"
@@ -86,6 +91,13 @@ class ScanHistory(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     product_name = Column(String(255), default="Scanned Food Product")
+    product_category = Column(
+        String(100),
+        default="Food Product",
+        nullable=False
+    )
+    ingredient_count = Column(Integer, default=0, nullable=False)
+    idempotency_key = Column(String(255), unique=True, nullable=True, index=True)
     raw_ocr_text = Column(Text, nullable=True)
     extracted_ingredients = Column(Text, default="[]")  # JSON array
     overall_status = Column(String(20), nullable=False)  # GOOD, CAUTION, AVOID
@@ -113,3 +125,20 @@ class PurchaseVerification(Base):
     created_at = Column(DateTime, default=get_utc_now)
 
     user = relationship("User", back_populates="purchases")
+
+class Payment(Base):
+    __tablename__ = "payments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    razorpay_order_id = Column(String(255), unique=True, nullable=False, index=True)
+    razorpay_payment_id = Column(String(255), unique=True, nullable=True, index=True)
+    razorpay_signature = Column(String(512), nullable=True)
+    amount = Column(Integer, default=19900, nullable=False)  # in paise: 19900 = 199 INR
+    currency = Column(String(10), default="INR", nullable=False)
+    status = Column(String(50), default="CREATED", nullable=False, index=True)  # CREATED, VERIFIED, CAPTURED, FAILED, REFUNDED
+    product = Column(String(100), default="inside_premium_lifetime", nullable=False)
+    created_at = Column(DateTime, default=get_utc_now, index=True)
+    updated_at = Column(DateTime, default=get_utc_now, onupdate=get_utc_now)
+
+    user = relationship("User", back_populates="payments")

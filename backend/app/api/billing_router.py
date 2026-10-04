@@ -38,9 +38,10 @@ def verify_purchase(
 
 @router.get("/status", response_model=PremiumStatusResponse)
 def get_premium_status(user: User = Depends(get_current_user)):
-    scans_left = 999999 if user.is_premium else max(0, settings.FREE_SCAN_LIMIT - user.scans_count)
+    scans_left = 999999 if user.is_premium else max(0, settings.FREE_SCAN_LIMIT - user.free_scans_used)
     return PremiumStatusResponse(
         is_premium=user.is_premium,
+        free_scans_used=user.free_scans_used,
         scans_count=user.scans_count,
         scans_left=scans_left,
         product_id=settings.LIFETIME_PRODUCT_ID,

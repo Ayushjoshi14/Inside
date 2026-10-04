@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
-import '../core/constants/app_constants.dart';
 import '../core/network/api_client.dart';
 import '../core/storage/local_storage.dart';
 import 'auth_service.dart';
@@ -17,63 +16,100 @@ class BillingService extends ChangeNotifier {
 
   BillingService(this._authService);
 
-  /// Initiates lifetime purchase flow.
-  /// On real devices with Google Play installed, coordinates with Play Store.
-  /// Tokens are securely sent to the backend for verification before granting access.
-  Future<bool> purchaseLifetime({String? mockTokenForTesting}) async {
+  /// Creates a Razorpay Order through the backend for ₹199 Lifetime Premium.
+  Future<Map<String, dynamic>?> createOrder() async {
     _isPurchasing = true;
     _errorMessage = null;
     notifyListeners();
 
     try {
-      // For real Play Store release, InAppPurchase.instance.buyNonConsumable is called.
-      // The resulting purchaseToken is verified via our backend.
-      final token = mockTokenForTesting ?? 'play_token_lifetime_${DateTime.now().millisecondsSinceEpoch}';
+      final res = await _apiClient.createRazorpayOrder();
+      if (res['success'] == true) {
+        _isPurchasing = false;
+        notifyListeners();
+        return res;
+      } else {
+        _errorMessage = res['error'] ?? 'Could not initiate Razorpay order.';
+        _isPurchasing = false;
+        notifyListeners();
+        return null;
+      }
+    } catch (e) {
+      _errorMessage = 'Network connection failed while creating order.';
+      _isPurchasing = false;
+      notifyListeners();
+      return null;
+    }
+  }
 
-      final result = await _apiClient.verifyPurchase(
-        productId: AppConstants.premiumProductId,
-        purchaseToken: token,
-        orderId: 'GPA.${DateTime.now().millisecondsSinceEpoch}',
+  /// Verifies Razorpay payment signature with backend and activates Lifetime Premium.
+  Future<bool> verifyPayment({
+    required String razorpayOrderId,
+    required String razorpayPaymentId,
+    required String razorpaySignature,
+  }) async {
+    _isPurchasing = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final res = await _apiClient.verifyRazorpayPayment(
+        razorpayOrderId: razorpayOrderId,
+        razorpayPaymentId: razorpayPaymentId,
+        razorpaySignature: razorpaySignature,
       );
 
-      if (result['success'] == true) {
+      if (res['success'] == true && res['is_premium'] == true) {
         await _authService.unlockPremium();
         _isPurchasing = false;
         notifyListeners();
         return true;
       } else {
-        _errorMessage = result['error'] ?? 'Your purchase could not be verified.';
+        _errorMessage = res['error'] ?? 'Payment verification failed.';
         _isPurchasing = false;
         notifyListeners();
         return false;
       }
     } catch (e) {
-      _errorMessage = 'Network connection failed during verification.';
+      _errorMessage = 'Network error during payment verification.';
       _isPurchasing = false;
       notifyListeners();
       return false;
     }
   }
 
-  /// Restores existing purchases (e.g. user reinstalling the app on a new device).
+  /// Restores / Reconciles premium status with the backend.
   Future<bool> restorePurchases() async {
     _isPurchasing = true;
+    _errorMessage = null;
     notifyListeners();
 
     try {
-      // In production, InAppPurchase.instance.restorePurchases() returns past purchase tokens.
-      // Each token is submitted to the backend to verify if valid for this user.
+      // 1. Check local storage
       final isPrem = await LocalStorage.isPremium();
       if (isPrem) {
         await _authService.unlockPremium();
+      }
+
+      // 2. Query authoritative backend status (Razorpay & Google Play endpoints)
+      final statusData = await _apiClient.fetchPaymentStatus();
+      if (statusData != null && statusData['is_premium'] == true) {
+        await _authService.unlockPremium();
         _isPurchasing = false;
         notifyListeners();
         return true;
       }
 
-      // Check remote profile
-      final remote = await _apiClient.fetchProfile();
-      if (remote?.isPremium == true) {
+      final billingData = await _apiClient.fetchBillingStatus();
+      if (billingData != null && billingData['is_premium'] == true) {
+        await _authService.unlockPremium();
+        _isPurchasing = false;
+        notifyListeners();
+        return true;
+      }
+
+      final profile = await _apiClient.fetchProfile();
+      if (profile != null && profile.isPremium) {
         await _authService.unlockPremium();
         _isPurchasing = false;
         notifyListeners();
@@ -81,14 +117,15 @@ class BillingService extends ChangeNotifier {
       }
 
       _isPurchasing = false;
-      _errorMessage = "No active lifetime purchase found for this Google account.";
+      _errorMessage = "No active Inside Lifetime Premium found for this account.";
       notifyListeners();
-      return false;
+      return isPrem;
     } catch (e) {
       _isPurchasing = false;
-      _errorMessage = "Failed to restore purchases. Please check your connection.";
+      _errorMessage = "Failed to sync purchases with server. Please check your connection.";
       notifyListeners();
       return false;
     }
   }
 }
+
