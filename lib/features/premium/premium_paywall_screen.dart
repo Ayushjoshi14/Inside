@@ -155,7 +155,9 @@ class _PremiumPaywallScreenState extends State<PremiumPaywallScreen> {
           children: const [
             Icon(Icons.bug_report_rounded, color: AppColors.statusAvoid, size: 26),
             SizedBox(width: 8),
-            Text("Razorpay Debug Info", style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
+            Expanded(
+              child: Text("Razorpay Debug Info", style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
+            ),
           ],
         ),
         content: SingleChildScrollView(
@@ -260,10 +262,15 @@ class _PremiumPaywallScreenState extends State<PremiumPaywallScreen> {
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Row(
-          children: const [
-            Icon(Icons.check_circle_rounded, color: AppColors.primary, size: 28),
-            SizedBox(width: 8),
-            Text("Premium Activated", style: TextStyle(fontWeight: FontWeight.w700)),
+          children: [
+            const Icon(Icons.check_circle_rounded, color: AppColors.primary, size: 28),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                isRestore ? "Access Restored" : "Premium Activated",
+                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
+              ),
+            ),
           ],
         ),
         content: Text(
