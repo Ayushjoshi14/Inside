@@ -5,8 +5,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from backend.app.config import settings
-from backend.app.database.session import engine, Base, SessionLocal, apply_db_migrations
-from backend.app.models.entities import Ingredient
+from backend.app.database.session import engine, Base, SessionLocal, get_db, apply_db_migrations
+from backend.app.models.entities import Ingredient, User, UserProfile
 from backend.app.api.auth_router import router as auth_router
 from backend.app.api.profile_router import router as profile_router
 from backend.app.api.scan_router import router as scan_router
@@ -115,6 +115,32 @@ app.include_router(billing_router)
 app.include_router(payment_router)
 app.include_router(payment_router, prefix="/api")
 app.include_router(legal_router)
+
+# Direct aliases for standard web checkout endpoints
+from backend.app.schemas.api_schemas import CreateOrderRequest, CreateOrderResponse, PaymentVerifyRequest, PaymentVerifyResponse
+from backend.app.security.auth import get_current_user
+from backend.app.api.payment_router import create_payment_order, verify_payment
+from sqlalchemy.orm import Session
+from fastapi import Depends
+from typing import Optional
+
+@app.post("/api/create-order", response_model=CreateOrderResponse, tags=["Razorpay Web Checkout"])
+@app.post("/create-order", response_model=CreateOrderResponse, tags=["Razorpay Web Checkout"])
+def api_create_order(
+    request: Optional[CreateOrderRequest] = None,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return create_payment_order(request=request, user=user, db=db)
+
+@app.post("/api/verify-payment", response_model=PaymentVerifyResponse, tags=["Razorpay Web Checkout"])
+@app.post("/verify-payment", response_model=PaymentVerifyResponse, tags=["Razorpay Web Checkout"])
+def api_verify_payment(
+    request: PaymentVerifyRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return verify_payment(request=request, user=user, db=db)
 
 @app.get("/")
 def root():
