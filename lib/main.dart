@@ -55,6 +55,10 @@ class InsideApp extends StatelessWidget {
       title: 'Inside',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
+      // Named routes for auth navigation
+      routes: {
+        '/home': (ctx) => const MainNavigationShell(),
+      },
       home: isFirstLaunch ? const OnboardingScreen() : const MainNavigationShell(),
     );
   }

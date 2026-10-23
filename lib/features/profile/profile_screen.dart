@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../services/auth_service.dart';
+import '../auth/login_screen.dart';
 import '../premium/premium_paywall_screen.dart';
 import 'edit_profile_screen.dart';
 import 'legal_screen.dart';
@@ -43,11 +44,40 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
+  void _confirmLogout(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text("Sign Out?", style: TextStyle(fontWeight: FontWeight.w700)),
+        content: const Text(
+          "Your local scan history will be cleared. Your account data remains safe on the server.",
+          style: TextStyle(fontSize: 14, color: AppColors.textPrimary, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text("Cancel", style: TextStyle(color: AppColors.textSecondary)),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              final auth = Provider.of<AuthService>(context, listen: false);
+              await auth.logout();
+            },
+            child: const Text("Sign Out"),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = Provider.of<AuthService>(context);
     final profile = auth.profile;
     final isPremium = auth.isPremium;
+    final isLoggedIn = auth.isAuthenticated;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -116,14 +146,26 @@ class ProfileScreen extends StatelessWidget {
                               ],
                             ),
                             const SizedBox(height: 2),
-                            Text(
-                              isPremium ? "Lifetime Premium Member" : "${auth.scansLeft} free scans left",
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: isPremium ? AppColors.primaryDark : AppColors.textSecondary,
-                                fontWeight: isPremium ? FontWeight.w600 : FontWeight.w400,
+                            // Show email for logged-in users
+                            if (isLoggedIn && profile != null && profile.email.isNotEmpty && profile.email != 'user@insideapp.in')
+                              Text(
+                                profile.email,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.textTertiary,
+                                ),
+                              )
+                            else
+                              Text(
+                                isPremium ? "Lifetime Premium Member" : "${auth.scansLeft} free scans left",
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: isPremium ? AppColors.primaryDark : AppColors.textSecondary,
+                                  fontWeight: isPremium ? FontWeight.w600 : FontWeight.w400,
+                                ),
                               ),
-                            ),
                           ],
                         ),
                       ),
@@ -137,6 +179,17 @@ class ProfileScreen extends StatelessWidget {
                       ),
                     ],
                   ),
+                  if (isLoggedIn) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      isPremium ? "Lifetime Premium Member" : "${auth.scansLeft} free scans left",
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: isPremium ? AppColors.primaryDark : AppColors.textSecondary,
+                        fontWeight: isPremium ? FontWeight.w600 : FontWeight.w400,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   const Divider(color: AppColors.border, height: 1),
                   const SizedBox(height: 12),
@@ -153,6 +206,52 @@ class ProfileScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 20),
+
+            // Sign In banner for guest users
+            if (!isLoggedIn) ...[
+              InkWell(
+                onTap: () async {
+                  await Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const LoginScreen(redirectAfterLogin: true),
+                    ),
+                  );
+                },
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryLight,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.person_add_outlined, color: AppColors.primaryDark, size: 28),
+                      const SizedBox(width: 14),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              "Sign in to your account",
+                              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.primaryDark),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              "Save history and sync across devices",
+                              style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.chevron_right_rounded, color: AppColors.primaryDark),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+            ],
 
             // Premium Banner if not subscribed
             if (!isPremium) ...[
@@ -263,6 +362,18 @@ class ProfileScreen extends StatelessWidget {
               },
             ),
             const SizedBox(height: 8),
+
+            // Logout (only for authenticated users)
+            if (isLoggedIn) ...[
+              _settingsTile(
+                icon: Icons.logout_rounded,
+                title: "Sign Out",
+                textColor: AppColors.textSecondary,
+                onTap: () => _confirmLogout(context),
+              ),
+              const SizedBox(height: 4),
+            ],
+
             _settingsTile(
               icon: Icons.delete_forever_outlined,
               title: "Delete Account",

@@ -137,6 +137,45 @@ class LocalStorage {
     }
   }
 
+  static Future<bool> updateScanInHistory(ScanResult updatedScan) async {
+    try {
+      final prefs = await _prefs;
+      final list = await getCachedHistory();
+      int matchIndex = -1;
+
+      // 1. Match by scanId if present
+      if (updatedScan.scanId != null) {
+        matchIndex = list.indexWhere((s) => s.scanId != null && s.scanId == updatedScan.scanId);
+      }
+
+      // 2. Fallback: match by createdAt timestamp
+      if (matchIndex == -1) {
+        matchIndex = list.indexWhere((s) =>
+            s.createdAt.millisecondsSinceEpoch == updatedScan.createdAt.millisecondsSinceEpoch);
+      }
+
+      // 3. Fallback: match by productName & rawOcrText
+      if (matchIndex == -1) {
+        matchIndex = list.indexWhere((s) =>
+            s.productName == updatedScan.productName && s.rawOcrText == updatedScan.rawOcrText);
+      }
+
+      if (matchIndex != -1) {
+        list[matchIndex] = updatedScan;
+        final jsonList = list.map((e) => e.toJson()).toList();
+        final success = await prefs.setString(_keyHistory, jsonEncode(jsonList));
+        debugPrint('History item updated at index $matchIndex: ${updatedScan.displayName}');
+        return success;
+      } else {
+        debugPrint('History item to update not found, saving as new');
+        return await saveScanToHistory(updatedScan);
+      }
+    } catch (e) {
+      debugPrint('History update failed: $e');
+      return false;
+    }
+  }
+
   static Future<void> clearHistory() async {
     try {
       final prefs = await _prefs;

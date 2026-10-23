@@ -110,12 +110,16 @@ class ScannerService extends ChangeNotifier {
     _statusMessage = "Reading ingredients...";
     notifyListeners();
 
-    // Use direct text if supplied (e.g. from tests or mock/MLKit), or sample product label OCR
-    String ocrText = directOcrText ?? _extractedText ?? "";
+    // Use direct text if supplied
+    String ocrText = (directOcrText ?? _extractedText ?? "").trim();
     if (ocrText.isEmpty) {
-      // In mobile environment, ML Kit / OCR processes the image pixels.
-      // High-accuracy fallback sample for testing if file OCR is pending:
-      ocrText = "INGREDIENTS: Refined Wheat Flour, Palm Oil, Sugar, Citric Acid, INS 322, Salt, Artificial Flavour.";
+      _step = ScanStep.error;
+      _errorMessage = "Please scan a clear image of the food package or ingredient label.";
+      notifyListeners();
+      throw UnableToIdentifyException(
+        title: "Unable to Identify Product",
+        message: "Please scan a clear image of the food package or ingredient label.",
+      );
     }
 
     _extractedText = ocrText;
@@ -126,7 +130,10 @@ class ScannerService extends ChangeNotifier {
       _step = ScanStep.error;
       _errorMessage = textCheck.issueReason;
       notifyListeners();
-      return null;
+      throw UnableToIdentifyException(
+        title: "Unable to Identify Product",
+        message: textCheck.issueReason ?? "Please scan a clear image of the food package or ingredient label.",
+      );
     }
 
     // 4. Analysis via backend / local food database
@@ -145,6 +152,16 @@ class ScannerService extends ChangeNotifier {
       await _authService.decrementScan();
       notifyListeners();
       return result;
+    } on IncompatibleProductException catch (e) {
+      _step = ScanStep.error;
+      _errorMessage = e.message;
+      notifyListeners();
+      rethrow;
+    } on UnableToIdentifyException catch (e) {
+      _step = ScanStep.error;
+      _errorMessage = e.message;
+      notifyListeners();
+      rethrow;
     } catch (e) {
       _step = ScanStep.error;
       _errorMessage = e.toString().replaceAll("Exception:", "").trim();

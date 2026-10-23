@@ -21,42 +21,18 @@ logger = logging.getLogger("inside")
 def seed_database_if_needed():
     db = SessionLocal()
     try:
-        # 1. Ensure default local/guest user exists
-        default_user = db.query(User).filter(User.id == 1).first()
-        if not default_user:
-            default_user = db.query(User).filter(User.email == "user@insideapp.in").first()
-        if not default_user:
-            from backend.app.security.auth import hash_password
-            default_user = User(
-                id=1,
-                email="user@insideapp.in",
-                hashed_password=hash_password("inside_app_default_secure_pass"),
-                is_active=True,
-                is_premium=False,
-                free_scans_used=0,
-                scans_count=0
-            )
-            db.add(default_user)
-            db.commit()
-            db.refresh(default_user)
-            profile = UserProfile(
-                user_id=default_user.id,
-                name="Friend",
-                diet_preference="NONE",
-                avoid_ingredients="[]",
-                allergens="[]"
-            )
-            db.add(profile)
-            db.commit()
-            logger.info("Initialized default user (id=1, email=user@insideapp.in)")
-
-        # 2. Seed ingredients
+        # Seed ingredients
         count = db.query(Ingredient).count()
         if count == 0:
-            seed_file = os.path.join(os.path.dirname(__file__), "seed_data", "ingredients.json")
+            seed_file = os.path.join(
+                os.path.dirname(__file__),
+                "seed_data",
+                "ingredients.json",
+            )
             if os.path.exists(seed_file):
                 with open(seed_file, "r", encoding="utf-8") as f:
                     items = json.load(f)
+
                 for item in items:
                     ing = Ingredient(
                         name=item["name"],
@@ -72,17 +48,20 @@ def seed_database_if_needed():
                         allergen_info=item.get("allergen_info"),
                         caution_level=item.get("caution_level", "GOOD"),
                         explanation=item.get("explanation"),
-                        source_ref=item.get("source_ref")
+                        source_ref=item.get("source_ref"),
                     )
                     db.add(ing)
+
                 db.commit()
-                logger.info(f"Seeded {len(items)} structured ingredients into database.")
-    except Exception as e:
-        logger.error(f"Error seeding database: {e}")
+                logger.info(
+                    "Seeded %s structured ingredients into database.",
+                    len(items),
+                )
+    except Exception:
+        logger.exception("Error seeding database")
         db.rollback()
     finally:
         db.close()
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: create tables and seed
@@ -121,7 +100,8 @@ from backend.app.schemas.api_schemas import CreateOrderRequest, CreateOrderRespo
 from backend.app.security.auth import get_current_user
 from backend.app.api.payment_router import create_payment_order, verify_payment
 from sqlalchemy.orm import Session
-from fastapi import Depends
+from fastapi import Depends, HTTPException
+from fastapi.responses import HTMLResponse, FileResponse
 from typing import Optional
 
 @app.post("/api/create-order", response_model=CreateOrderResponse, tags=["Razorpay Web Checkout"])
@@ -131,7 +111,13 @@ def api_create_order(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    return create_payment_order(request=request, user=user, db=db)
+    try:
+        return create_payment_order(request=request, user=user, db=db)
+    except HTTPException as e:
+        # Standard web checkout specification: Razorpay API errors return 500
+        if e.status_code == 502:
+            raise HTTPException(status_code=500, detail=e.detail)
+        raise e
 
 @app.post("/api/verify-payment", response_model=PaymentVerifyResponse, tags=["Razorpay Web Checkout"])
 @app.post("/verify-payment", response_model=PaymentVerifyResponse, tags=["Razorpay Web Checkout"])
@@ -142,15 +128,46 @@ def api_verify_payment(
 ):
     return verify_payment(request=request, user=user, db=db)
 
+@app.get("/checkout", response_class=HTMLResponse, tags=["Razorpay Web Checkout"])
+@app.get("/web/checkout", response_class=HTMLResponse, tags=["Razorpay Web Checkout"])
+def checkout_page():
+    """
+    Serves the Razorpay Standard Web Checkout frontend page.
+    """
+    checkout_html_path = os.path.join(os.path.dirname(__file__), "static", "checkout.html")
+    if os.path.exists(checkout_html_path):
+        with open(checkout_html_path, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    return HTMLResponse(content="<h1>Checkout page not found</h1>", status_code=404)
+
 @app.get("/")
 def root():
     return {
         "app": "Inside",
         "tagline": "Know what's inside.",
         "status": "online",
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "checkout_url": "/checkout"
     }
 
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
+@app.get("/privacy-policy", include_in_schema=False)
+def privacy_policy():
+    privacy_policy_path = os.path.join(
+        os.path.dirname(__file__),
+        "static",
+        "privacy-policy.html",
+    )
+
+    if os.path.exists(privacy_policy_path):
+        return FileResponse(
+            privacy_policy_path,
+            media_type="text/html",
+        )
+
+    return HTMLResponse(
+        content="Privacy policy not found",
+        status_code=404,
+    )

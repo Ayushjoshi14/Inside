@@ -1,11 +1,27 @@
+import java.util.Properties
+import java.io.FileInputStream
+import java.io.File
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+val keystoreProperties = Properties()
+val keystorePropertiesFile: File? = listOf(
+    rootProject.file("key.properties"),
+    rootProject.file("../key.properties"),
+    file("key.properties")
+).firstOrNull { it.exists() }
+
+val hasKeystore = keystorePropertiesFile != null
+if (hasKeystore && keystorePropertiesFile != null) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+}
+
 android {
-    namespace = "com.inside.ingredients"
+    namespace = "com.ayush.inside"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -15,22 +31,53 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.inside.ingredients"
+        applicationId = "com.ayush.inside"
         minSdk = 24
         targetSdk = flutter.targetSdkVersion
-        // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
-        // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-apk-splits#configure-APK-versions)
-        // You can force using the value of versionCode by specifying the `-P force-version-code-ignoring-abi=true`
-        // flag during build.
+
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("release") {
+            if (hasKeystore) {
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+                storePassword = keystoreProperties.getProperty("storePassword")
+                val storeFilePath = keystoreProperties.getProperty("storeFile")
+                if (!storeFilePath.isNullOrBlank()) {
+                    val rawFile = File(storeFilePath)
+                    val rootFile = rootProject.file(storeFilePath)
+                    val appFile = file(storeFilePath)
+                    storeFile = when {
+                        rawFile.isAbsolute && rawFile.exists() -> rawFile
+                        rootFile.exists() -> rootFile
+                        appFile.exists() -> appFile
+                        rawFile.exists() -> rawFile
+                        else -> rootFile
+                    }
+                }
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            val isReleaseSigningConfigured = hasKeystore &&
+                signingConfigs.getByName("release").storeFile?.exists() == true
+
+            signingConfig = if (isReleaseSigningConfigured) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
+            isMinifyEnabled = false
+            isShrinkResources = false
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
 }
@@ -44,3 +91,13 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+tasks.matching { it.name.contains("PreBundle") || it.name.contains("packageReleaseBundle") }.configureEach {
+    doFirst {
+        val assetsDir = layout.buildDirectory.dir("intermediates/assets/release/mergeReleaseAssets").get().asFile
+        if (!assetsDir.exists()) {
+            assetsDir.mkdirs()
+        }
+    }
+}
+

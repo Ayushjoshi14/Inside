@@ -21,6 +21,7 @@ CONSUMER_CATEGORIES = [
     "Tea & Coffee",
     "Ready-to-Eat",
     "Baby Food",
+    "Dietary Supplement",
     "Other Food",
     "Food Product"
 ]
@@ -69,6 +70,7 @@ CATEGORY_KEYWORD_MAP: List[Tuple[List[str], str]] = [
     (["tea", "coffee", "espresso", "cappuccino", "latte", "chai", "green tea", "black tea", "brew"], "Tea & Coffee"),
     (["energy drink", "beverage", "beverages", "isotonic", "sports drink", "drink"], "Beverage"),
     (["baby food", "infant formula", "cerelac", "infant"], "Baby Food"),
+    (["dietary supplement", "health supplement", "nutraceutical", "multivitamin", "creatine", "collagen", "pre-workout"], "Dietary Supplement"),
     (["ready-to-eat", "ready to eat"], "Ready-to-Eat"),
 ]
 

@@ -2,33 +2,18 @@ import pytest
 import datetime
 import json
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 from backend.app.main import app
-from backend.app.database.session import Base, get_db
 from backend.app.ocr.processor import process_raw_label, split_into_ingredients, clean_raw_ocr
 from backend.app.services.normalization import normalize_ingredient_name
 from backend.app.services.analysis_engine import evaluate_personalized_status, analyze_ingredients_list
 from backend.app.models.entities import UserProfile, Ingredient
 
-# Test database
-TEST_DB_URL = "sqlite:///./test_inside.db"
-test_engine = create_engine(TEST_DB_URL, connect_args={"check_same_thread": False})
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
-
-def override_get_db():
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-app.dependency_overrides[get_db] = override_get_db
+# Shared test DB from conftest — re-exported for other test files that import from here
+from backend.tests.conftest import TestingSessionLocal, test_engine  # noqa: F401
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_db():
-    Base.metadata.create_all(bind=test_engine)
-    # Seed test ingredients
+    # Seed test ingredients (conftest already creates tables)
     db = TestingSessionLocal()
     if db.query(Ingredient).count() == 0:
         db.add(Ingredient(
@@ -63,7 +48,8 @@ def setup_test_db():
         db.commit()
     db.close()
     yield
-    Base.metadata.drop_all(bind=test_engine)
+    # Tables are managed by conftest; no teardown needed here
+
 
 client = TestClient(app)
 

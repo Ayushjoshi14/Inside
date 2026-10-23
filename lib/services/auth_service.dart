@@ -8,12 +8,16 @@ class AuthService extends ChangeNotifier {
   UserProfile? _profile;
   bool _isLoading = false;
   bool _isAuthenticated = false;
+  String? _lastError;
 
   UserProfile? get profile => _profile;
   bool get isLoading => _isLoading;
   bool get isAuthenticated => _isAuthenticated;
   bool get isPremium => _profile?.isPremium ?? false;
   int get scansLeft => _profile?.scansLeft ?? 3;
+
+  /// Last error message from login/register. Cleared on success.
+  String? get lastError => _lastError;
 
   Future<void> init() async {
     _isLoading = true;
@@ -64,16 +68,18 @@ class AuthService extends ChangeNotifier {
 
     if (res['success'] == true) {
       _isAuthenticated = true;
+      _lastError = null;
       _profile = UserProfile(
         userId: res['data']['user_id'] ?? 1,
         email: email,
-        name: name,
+        name: name.trim().isEmpty ? 'Friend' : name.trim(),
         isPremium: res['data']['is_premium'] ?? false,
       );
       await LocalStorage.saveProfile(_profile!);
       notifyListeners();
       return true;
     }
+    _lastError = res['error']?.toString();
     notifyListeners();
     return false;
   }
@@ -87,6 +93,7 @@ class AuthService extends ChangeNotifier {
 
     if (res['success'] == true) {
       _isAuthenticated = true;
+      _lastError = null;
       _profile = UserProfile(
         userId: res['data']['user_id'] ?? 1,
         email: email,
@@ -97,8 +104,28 @@ class AuthService extends ChangeNotifier {
       notifyListeners();
       return true;
     }
+    _lastError = res['error']?.toString();
     notifyListeners();
     return false;
+  }
+
+  /// Logs the user out and resets all local session data to guest defaults.
+  Future<void> logout() async {
+    _isAuthenticated = false;
+    _lastError = null;
+    await LocalStorage.clearAll();
+
+    // Reset to fresh guest defaults
+    _profile = UserProfile(
+      userId: 0,
+      email: '',
+      name: 'Friend',
+      isPremium: false,
+      scansCount: 0,
+      scansLeft: 3,
+    );
+    await LocalStorage.saveProfile(_profile!);
+    notifyListeners();
   }
 
   Future<void> updatePreferences({
@@ -142,8 +169,10 @@ class AuthService extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
     await _apiClient.deleteAccount();
+    await LocalStorage.clearAll();
     _profile = null;
     _isAuthenticated = false;
+    _lastError = null;
     _isLoading = false;
     await init();
   }

@@ -48,7 +48,7 @@ class DisclaimerBanner extends StatelessWidget {
               Icon(Icons.info_outline_rounded, size: 18, color: AppColors.textSecondary),
               SizedBox(width: 8),
               Text(
-                "Medical & Safety Notice",
+                "Safety & Information Notice",
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,

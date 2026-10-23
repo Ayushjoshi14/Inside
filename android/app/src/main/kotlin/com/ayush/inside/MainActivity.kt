@@ -1,4 +1,4 @@
-package com.inside.ingredients
+package com.ayush.inside
 
 import io.flutter.embedding.android.FlutterActivity
 

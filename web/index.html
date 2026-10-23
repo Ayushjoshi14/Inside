@@ -38,9 +38,38 @@
     This is useful to provide a custom configuration to the Flutter loader
     or to give the user feedback during the initialization process.
 
+  <!--
     For more details:
+    * https://docs.flutter.dev/platform-integration/web/initialization
+  -->
   <!-- Razorpay Standard Web Checkout SDK -->
   <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+  <script>
+    window.openRazorpayWebCheckout = function(options, onSuccess, onFailure, onDismiss) {
+      try {
+        var rzpOptions = Object.assign({}, options, {
+          handler: function(response) {
+            if (onSuccess) {
+              onSuccess(response.razorpay_payment_id, response.razorpay_order_id, response.razorpay_signature);
+            }
+          },
+          modal: {
+            ondismiss: function() {
+              if (onDismiss) onDismiss();
+            }
+          }
+        });
+        var rzp = new Razorpay(rzpOptions);
+        rzp.on('payment.failed', function(resp) {
+          if (onFailure) onFailure(resp.error || {});
+        });
+        rzp.open();
+      } catch (err) {
+        console.error('Razorpay checkout error:', err);
+        if (onFailure) onFailure({ description: err.message });
+      }
+    };
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

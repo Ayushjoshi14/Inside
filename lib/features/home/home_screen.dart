@@ -304,10 +304,11 @@ class HomeScreenState extends State<HomeScreen> {
     final timeStr = DateFormat('h:mm a').format(scan.createdAt);
 
     return InkWell(
-      onTap: () {
-        Navigator.of(context).push(
+      onTap: () async {
+        await Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => ResultScreen(result: scan)),
         );
+        loadRecents();
       },
       borderRadius: BorderRadius.circular(16),
       child: Container(
@@ -337,7 +338,7 @@ class HomeScreenState extends State<HomeScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    scan.productName,
+                    scan.displayName,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(

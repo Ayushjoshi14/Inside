@@ -1,0 +1,669 @@
+<!-- Standalone Razorpay Standard Web Checkout -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Inside — Razorpay Web Checkout</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <!-- Razorpay Standard Web Checkout SDK -->
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+
+  <style>
+    :root {
+      --bg-gradient: radial-gradient(circle at 50% 0%, #132219 0%, #0a0f0d 100%);
+      --card-bg: rgba(18, 27, 22, 0.82);
+      --card-border: rgba(34, 197, 94, 0.22);
+      --primary: #16a34a;
+      --primary-hover: #22c55e;
+      --primary-glow: rgba(34, 197, 94, 0.35);
+      --accent-gold: #eab308;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --surface: rgba(255, 255, 255, 0.04);
+      --surface-border: rgba(255, 255, 255, 0.08);
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --success: #10b981;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background: #090d0b;
+      background-image: var(--bg-gradient);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+      overflow-x: hidden;
+    }
+
+    .glow-orb {
+      position: absolute;
+      width: 480px;
+      height: 480px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(34, 197, 94, 0.12) 0%, rgba(34, 197, 94, 0) 70%);
+      top: -100px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 520px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .brand-header {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+
+    .brand-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      background: rgba(34, 197, 94, 0.12);
+      border: 1px solid rgba(34, 197, 94, 0.3);
+      border-radius: 999px;
+      font-family: 'Outfit', sans-serif;
+      font-size: 13px;
+      font-weight: 600;
+      color: #4ade80;
+      margin-bottom: 12px;
+      letter-spacing: 0.5px;
+    }
+
+    .brand-logo {
+      font-family: 'Outfit', sans-serif;
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, #ffffff 40%, #86efac 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .brand-tagline {
+      font-size: 14px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .checkout-card {
+      background: var(--card-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--card-border);
+      border-radius: 24px;
+      padding: 32px 28px;
+      box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.6), 0 0 40px -10px var(--primary-glow);
+    }
+
+    .product-headline {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 18px;
+    }
+
+    .plan-tag {
+      background: linear-gradient(135deg, #eab308 0%, #ca8a04 100%);
+      color: #000;
+      font-family: 'Outfit', sans-serif;
+      font-weight: 800;
+      font-size: 11px;
+      text-transform: uppercase;
+      padding: 4px 10px;
+      border-radius: 6px;
+      letter-spacing: 0.5px;
+    }
+
+    .product-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 24px;
+      font-weight: 700;
+      margin-top: 6px;
+      color: #fff;
+    }
+
+    .product-subtitle {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .price-box {
+      text-align: right;
+    }
+
+    .original-price {
+      font-size: 13px;
+      color: #64748b;
+      text-decoration: line-through;
+    }
+
+    .current-price {
+      font-family: 'Outfit', sans-serif;
+      font-size: 32px;
+      font-weight: 800;
+      color: #4ade80;
+      line-height: 1;
+    }
+
+    .price-sub {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .benefits-list {
+      margin: 20px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      border-top: 1px solid var(--surface-border);
+      border-bottom: 1px solid var(--surface-border);
+      padding: 18px 0;
+    }
+
+    .benefit-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 13.5px;
+      color: #e2e8f0;
+    }
+
+    .check-icon {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: rgba(34, 197, 94, 0.15);
+      border: 1px solid rgba(34, 197, 94, 0.4);
+      color: #4ade80;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: bold;
+      flex-shrink: 0;
+    }
+
+    .custom-amount-panel {
+      background: var(--surface);
+      border: 1px solid var(--surface-border);
+      border-radius: 12px;
+      padding: 12px 14px;
+      margin-bottom: 20px;
+    }
+
+    .custom-amount-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    .amount-buttons {
+      display: flex;
+      gap: 8px;
+    }
+
+    .amt-btn {
+      flex: 1;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: var(--text-main);
+      padding: 8px 10px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .amt-btn.active {
+      background: rgba(34, 197, 94, 0.2);
+      border-color: #22c55e;
+      color: #4ade80;
+    }
+
+    .pay-btn {
+      width: 100%;
+      background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+      color: #ffffff;
+      border: none;
+      border-radius: 14px;
+      padding: 16px 24px;
+      font-family: 'Outfit', sans-serif;
+      font-size: 17px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      box-shadow: 0 8px 24px -4px rgba(22, 163, 74, 0.5);
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .pay-btn:hover:not(:disabled) {
+      background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+      transform: translateY(-2px);
+      box-shadow: 0 12px 28px -2px rgba(22, 163, 74, 0.65);
+    }
+
+    .pay-btn:disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+
+    .spinner {
+      width: 20px;
+      height: 20px;
+      border: 2.5px solid rgba(255, 255, 255, 0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      display: none;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .security-notice {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 16px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .security-notice svg {
+      width: 14px;
+      height: 14px;
+      fill: currentColor;
+    }
+
+    .banner {
+      margin-top: 20px;
+      padding: 14px 16px;
+      border-radius: 12px;
+      font-size: 13px;
+      line-height: 1.45;
+      display: none;
+      animation: slideIn 0.3s ease;
+    }
+
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(-8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .banner.info {
+      background: rgba(59, 130, 246, 0.12);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      color: #93c5fd;
+    }
+
+    .banner.warning {
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      color: #fcd34d;
+    }
+
+    .banner.error {
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #fca5a5;
+    }
+
+    .banner.success {
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #6ee7b7;
+    }
+
+    .details-card {
+      margin-top: 20px;
+      background: rgba(16, 185, 129, 0.08);
+      border: 1px solid rgba(16, 185, 129, 0.35);
+      border-radius: 16px;
+      padding: 20px;
+      display: none;
+      animation: slideIn 0.3s ease;
+    }
+
+    .details-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 16px;
+      font-weight: 700;
+      color: #4ade80;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .details-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      padding: 6px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .details-row:last-child {
+      border-bottom: none;
+    }
+
+    .details-label {
+      color: var(--text-muted);
+    }
+
+    .details-value {
+      font-family: 'JetBrains Mono', monospace;
+      color: #f1f5f9;
+      font-weight: 600;
+      max-width: 250px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .footer {
+      text-align: center;
+      margin-top: 24px;
+      font-size: 12px;
+      color: #64748b;
+    }
+  </style>
+</head>
+<body>
+  <div class="glow-orb"></div>
+
+  <div class="container">
+    <header class="brand-header">
+      <div class="brand-badge">⚡ Razorpay Standard Checkout</div>
+      <h1 class="brand-logo">Inside</h1>
+      <p class="brand-tagline">Know what's inside. AI Ingredient Scanner & Food Intelligence</p>
+    </header>
+
+    <main class="checkout-card">
+      <div class="product-headline">
+        <div>
+          <span class="plan-tag">✨ Lifetime Pass</span>
+          <h2 class="product-title">Inside Premium</h2>
+          <p class="product-subtitle">Unlimited scans & personalised health analysis</p>
+        </div>
+        <div class="price-box">
+          <div class="original-price" id="original-price">₹999</div>
+          <div class="current-price" id="display-price">₹199</div>
+          <div class="price-sub">one-time payment</div>
+        </div>
+      </div>
+
+      <div class="benefits-list">
+        <div class="benefit-item">
+          <div class="check-icon">✓</div>
+          <div><strong>Unlimited AI Scans</strong> — Zero limits on food ingredient checks</div>
+        </div>
+        <div class="benefit-item">
+          <div class="check-icon">✓</div>
+          <div><strong>Additives & INS Breakdown</strong> — Complete toxicity & safety details</div>
+        </div>
+        <div class="benefit-item">
+          <div class="check-icon">✓</div>
+          <div><strong>Personalized Health Filter</strong> — Allergen & diet preference flags</div>
+        </div>
+        <div class="benefit-item">
+          <div class="check-icon">✓</div>
+          <div><strong>Lifetime Access</strong> — No recurring subscriptions or renewals</div>
+        </div>
+      </div>
+
+      <div class="custom-amount-panel">
+        <div class="custom-amount-header">
+          <span>Checkout Amount</span>
+          <span id="paise-display">19,900 paise</span>
+        </div>
+        <div class="amount-buttons">
+          <button type="button" class="amt-btn active" id="btn-amt-199" onclick="setAmount(19900, '₹199', '₹999', 'btn-amt-199')">
+            ₹199 (Standard)
+          </button>
+          <button type="button" class="amt-btn" id="btn-amt-1" onclick="setAmount(100, '₹1.00', '₹10', 'btn-amt-1')">
+            ₹1.00 (Test Min)
+          </button>
+          <button type="button" class="amt-btn" id="btn-amt-500" onclick="setAmount(50000, '₹500', '₹1499', 'btn-amt-500')">
+            ₹500 (Custom)
+          </button>
+        </div>
+      </div>
+
+      <button id="pay-button" class="pay-btn" onclick="initiateRazorpayCheckout()">
+        <span class="spinner" id="btn-spinner"></span>
+        <span id="btn-text">Pay ₹199 with Razorpay</span>
+      </button>
+
+      <div class="security-notice">
+        <svg viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
+        <span>Protected by Razorpay 256-bit encryption • UPI, Cards, NetBanking</span>
+      </div>
+
+      <div id="feedback-banner" class="banner"></div>
+
+      <div id="details-card" class="details-card">
+        <div class="details-title">
+          <span>✓</span> Payment Verified & Recorded
+        </div>
+        <div class="details-row">
+          <span class="details-label">Payment ID:</span>
+          <span class="details-value" id="res-payment-id">—</span>
+        </div>
+        <div class="details-row">
+          <span class="details-label">Order ID:</span>
+          <span class="details-value" id="res-order-id">—</span>
+        </div>
+        <div class="details-row">
+          <span class="details-label">Cryptographic Signature:</span>
+          <span class="details-value" style="color: #4ade80;">✓ HMAC SHA256 MATCH</span>
+        </div>
+        <div class="details-row">
+          <span class="details-label">Premium Status:</span>
+          <span class="details-value" style="color: #4ade80;">Active (Unlimited)</span>
+        </div>
+      </div>
+    </main>
+
+    <footer class="footer">
+      Inside App © 2026 • Razorpay Web Integration Standard
+    </footer>
+  </div>
+
+  <script>
+    let currentAmountPaise = 19900;
+    let currentPriceText = "₹199";
+
+    function setAmount(paise, priceText, origText, btnId) {
+      currentAmountPaise = paise;
+      currentPriceText = priceText;
+      document.getElementById('display-price').textContent = priceText;
+      document.getElementById('original-price').textContent = origText;
+      document.getElementById('paise-display').textContent = Number(paise).toLocaleString() + ' paise';
+      document.getElementById('btn-text').textContent = 'Pay ' + priceText + ' with Razorpay';
+
+      document.querySelectorAll('.amt-btn').forEach(btn => btn.classList.remove('active'));
+      const activeBtn = document.getElementById(btnId);
+      if (activeBtn) activeBtn.classList.add('active');
+
+      hideBanner();
+      document.getElementById('details-card').style.display = 'none';
+    }
+
+    function showBanner(message, type) {
+      const banner = document.getElementById('feedback-banner');
+      banner.className = 'banner ' + type;
+      banner.textContent = message;
+      banner.style.display = 'block';
+    }
+
+    function hideBanner() {
+      const banner = document.getElementById('feedback-banner');
+      banner.style.display = 'none';
+    }
+
+    function setLoading(isLoading) {
+      const btn = document.getElementById('pay-button');
+      const spinner = document.getElementById('btn-spinner');
+      const btnText = document.getElementById('btn-text');
+
+      btn.disabled = isLoading;
+      if (isLoading) {
+        spinner.style.display = 'inline-block';
+        btnText.textContent = 'Preparing Order...';
+      } else {
+        spinner.style.display = 'none';
+        btnText.textContent = 'Pay ' + currentPriceText + ' with Razorpay';
+      }
+    }
+
+    async function initiateRazorpayCheckout() {
+      hideBanner();
+      document.getElementById('details-card').style.display = 'none';
+      setLoading(true);
+
+      let orderData;
+      try {
+        const payload = {
+          amount: currentAmountPaise,
+          currency: 'INR',
+          receipt: 'rcpt_inside_web_' + Date.now(),
+          product: 'inside_premium_lifetime'
+        };
+
+        const res = await fetch('/api/create-order', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          const errMsg = data.detail || data.message || 'Could not create Razorpay order (Status: ' + res.status + ')';
+          showBanner('Error creating order: ' + errMsg, 'error');
+          setLoading(false);
+          return;
+        }
+
+        orderData = data;
+      } catch (err) {
+        showBanner('Network error connecting to backend: ' + err.message, 'error');
+        setLoading(false);
+        return;
+      }
+
+      const options = {
+        key: orderData.key_id,
+        amount: orderData.amount,
+        currency: orderData.currency || 'INR',
+        name: 'Inside',
+        description: 'Inside Premium — Lifetime Access',
+        order_id: orderData.order_id,
+        prefill: {
+          name: 'Inside User',
+          email: 'user@insideapp.in',
+          contact: '9999999999'
+        },
+        theme: {
+          color: '#16a34a'
+        },
+        handler: async function (response) {
+          showBanner('Payment authorized! Verifying cryptographic signature with server...', 'info');
+
+          try {
+            const verifyPayload = {
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature
+            };
+
+            const verifyRes = await fetch('/api/verify-payment', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+              },
+              body: JSON.stringify(verifyPayload)
+            });
+
+            const verifyData = await verifyRes.json();
+
+            if (verifyRes.ok && verifyData.success) {
+              showBanner('Payment Verified! Lifetime Premium Activated.', 'success');
+              document.getElementById('res-payment-id').textContent = response.razorpay_payment_id;
+              document.getElementById('res-order-id').textContent = response.razorpay_order_id;
+              document.getElementById('details-card').style.display = 'block';
+            } else {
+              const errDetail = verifyData.detail || verifyData.message || 'Signature mismatch or verification rejected.';
+              showBanner('Verification failed: ' + errDetail, 'error');
+            }
+          } catch (err) {
+            showBanner('Network error during signature verification: ' + err.message, 'error');
+          } finally {
+            setLoading(false);
+          }
+        },
+        modal: {
+          ondismiss: function () {
+            showBanner('Payment cancelled: Checkout modal was dismissed.', 'warning');
+            setLoading(false);
+          }
+        }
+      };
+
+      try {
+        const rzp = new Razorpay(options);
+
+        rzp.on('payment.failed', function (failResponse) {
+          const err = failResponse.error || {};
+          const description = err.description || err.reason || 'Payment was declined or failed.';
+          const code = err.code || 'UNKNOWN';
+          showBanner('Payment Failed: ' + description + ' (Error Code: ' + code + ')', 'error');
+          setLoading(false);
+        });
+
+        rzp.open();
+      } catch (e) {
+        showBanner('Error launching Razorpay modal: ' + e.message, 'error');
+        setLoading(false);
+      }
+    }
+  </script>
+</body>
+</html>

@@ -17,6 +17,55 @@ class IngredientDetailSheet extends StatelessWidget {
     );
   }
 
+  Widget _buildSourceBadge(String source) {
+    final IconData icon;
+    final String label;
+    final Color color;
+
+    switch (source.toLowerCase()) {
+      case 'local_db':
+        icon = Icons.verified_outlined;
+        label = 'Verified Food Database';
+        color = AppColors.primary;
+        break;
+      case 'cache':
+        icon = Icons.offline_pin_outlined;
+        label = 'Cached Knowledge Base';
+        color = AppColors.primaryDark;
+        break;
+      case 'ai':
+      default:
+        icon = Icons.auto_awesome;
+        label = 'AI Food Science Engine';
+        color = const Color(0xFF7C3AED);
+        break;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -68,6 +117,10 @@ class IngredientDetailSheet extends StatelessWidget {
                         color: AppColors.textSecondary,
                       ),
                     ),
+                    if (ingredient.source != null && ingredient.source!.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      _buildSourceBadge(ingredient.source!),
+                    ],
                   ],
                 ),
               ),

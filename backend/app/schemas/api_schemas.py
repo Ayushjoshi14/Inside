@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, EmailStr, Field
 
 # Auth
@@ -48,6 +48,27 @@ class IngredientItemAnalysis(BaseModel):
     vegetarian_status: Optional[str] = "YES"
     vegan_status: Optional[str] = "YES"
     allergen_info: Optional[str] = None
+    source: Optional[str] = None  # "local_db" | "cache" | "ai" — analysis source
+
+class ScoreBreakdownItem(BaseModel):
+    label: str
+    points: int
+
+class ScoreBreakdown(BaseModel):
+    base_score: int = 100
+    assessment_type: Optional[str] = "FULL_NUTRITIONAL_AND_INGREDIENT"
+    assessment_label: Optional[str] = "Verified Ingredients & Nutrition Facts"
+    deductions: List[ScoreBreakdownItem] = []
+    bonuses: List[ScoreBreakdownItem] = []
+    final_score: int
+    good_count: int = 0
+    caution_count: int = 0
+    avoid_count: int = 0
+    nutrition_integrated: bool = False
+    disclaimer: str = (
+        "Score is an informational estimate based on ingredient safety classifications "
+        "and available nutrition data. It is not a medical or clinical assessment."
+    )
 
 class ScanAnalysisResult(BaseModel):
     scan_id: Optional[int] = None
@@ -56,12 +77,22 @@ class ScanAnalysisResult(BaseModel):
     ingredient_count: Optional[int] = 0
     overall_status: str  # GOOD, CAUTION, AVOID
     score: int  # 0 to 100
+    score_breakdown: Optional[ScoreBreakdown] = None  # transparent scoring breakdown
+    positive_findings: List[str] = []  # notable wholesome ingredients
     summary: str
     ingredients: List[IngredientItemAnalysis]
     warnings: List[str]
     recommendations: List[str]
     raw_ocr_text: Optional[str] = None
     created_at: Optional[str] = None
+    is_compatible: bool = True
+    compatibility_status: str = "COMPATIBLE"
+    compatibility_message: Optional[str] = None
+    custom_product_name: Optional[str] = None
+    purchase_decision: Optional[str] = None
+    nutrition_facts: Dict[str, Any] = {}
+    assessment_type: Optional[str] = "INGREDIENT_ONLY"
+
 
 class ScanTextRequest(BaseModel):
     product_name: Optional[str] = None
@@ -85,6 +116,13 @@ class HistoryItemResponse(BaseModel):
     summary: Optional[str]
     ingredient_count: int
     created_at: str
+    custom_product_name: Optional[str] = None
+    purchase_decision: Optional[str] = None
+    nutrition_facts: Optional[Dict[str, Any]] = None
+
+class UpdateScanDecisionRequest(BaseModel):
+    custom_product_name: Optional[str] = None
+    purchase_decision: Optional[str] = None
 
 # Razorpay Payments
 class CreateOrderRequest(BaseModel):

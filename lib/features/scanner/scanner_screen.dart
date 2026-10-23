@@ -5,7 +5,9 @@ import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import '../../services/scanner_service.dart';
+import '../../core/network/api_client.dart';
 import '../analysis/result_screen.dart';
+import '../premium/premium_paywall_screen.dart';
 
 class ScannerScreen extends StatefulWidget {
   const ScannerScreen({super.key});
@@ -20,9 +22,6 @@ class _ScannerScreenState extends State<ScannerScreen> {
   File? _capturedImage;
   bool _isAnalyzing = false;
 
-  String _extractedText = '';
-  int _score = 0;
-
   Future<void> _captureIngredientLabel() async {
     try {
       final XFile? photo = await _picker.pickImage(
@@ -36,8 +35,6 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
       setState(() {
         _capturedImage = File(photo.path);
-        _extractedText = '';
-        _score = 0;
       });
     } catch (e) {
       if (!mounted) return;
@@ -75,19 +72,10 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
       if (extractedText.trim().isEmpty) {
         if (!mounted) return;
-
         setState(() {
           _isAnalyzing = false;
         });
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Could not read the ingredients. Please take a clearer photo.',
-            ),
-          ),
-        );
-
+        _showUnableToIdentifyDialog();
         return;
       }
 
@@ -99,277 +87,208 @@ class _ScannerScreenState extends State<ScannerScreen> {
         directOcrText: extractedText,
       );
 
-      final score = result?.score ?? _calculateScore(extractedText);
-
       if (!mounted) return;
 
       setState(() {
-        _extractedText = extractedText;
-        _score = score;
         _isAnalyzing = false;
       });
 
-      if (result != null) {
+      if (result != null && result.isCompatible) {
         Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => ResultScreen(result: result)),
         );
       } else {
-        _showResult();
+        _showUnableToIdentifyDialog();
       }
-    } catch (e) {
+    } on IncompatibleProductException catch (e) {
       if (!mounted) return;
-
       setState(() {
         _isAnalyzing = false;
       });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Analysis failed: $e'),
-        ),
+      _showIncompatibleProductDialog(
+        title: e.title,
+        message: e.message,
       );
+    } on UnableToIdentifyException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isAnalyzing = false;
+      });
+      _showUnableToIdentifyDialog(
+        title: e.title,
+        message: e.message,
+      );
+    } on FreeScansExhaustedException {
+      if (!mounted) return;
+      setState(() {
+        _isAnalyzing = false;
+      });
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const PremiumPaywallScreen()),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isAnalyzing = false;
+      });
+      _showUnableToIdentifyDialog();
     }
   }
 
-  int _calculateScore(String text) {
-    final ingredients = text.toLowerCase();
-
-    int score = 100;
-
-    // High sugar
-    if (ingredients.contains('sugar') ||
-        ingredients.contains('glucose syrup') ||
-        ingredients.contains('fructose') ||
-        ingredients.contains('maltose')) {
-      score -= 15;
-    }
-
-    // Artificial sweeteners
-    if (ingredients.contains('aspartame') ||
-        ingredients.contains('sucralose') ||
-        ingredients.contains('acesulfame')) {
-      score -= 10;
-    }
-
-    // Artificial colors
-    if (ingredients.contains('tartrazine') ||
-        ingredients.contains('sunset yellow') ||
-        ingredients.contains('brilliant blue') ||
-        ingredients.contains('artificial colour')) {
-      score -= 10;
-    }
-
-    // Preservatives
-    if (ingredients.contains('sodium benzoate') ||
-        ingredients.contains('potassium sorbate') ||
-        ingredients.contains('preservative')) {
-      score -= 10;
-    }
-
-    // Trans fat
-    if (ingredients.contains('trans fat') ||
-        ingredients.contains('hydrogenated oil')) {
-      score -= 20;
-    }
-
-    // Palm oil
-    if (ingredients.contains('palm oil')) {
-      score -= 5;
-    }
-
-    // Positive ingredients
-    if (ingredients.contains('whole grain') ||
-        ingredients.contains('whole wheat') ||
-        ingredients.contains('oats')) {
-      score += 5;
-    }
-
-    if (ingredients.contains('protein')) {
-      score += 5;
-    }
-
-    if (score < 0) score = 0;
-    if (score > 100) score = 100;
-
-    return score;
-  }
-
-  String _getScoreLabel() {
-    if (_score >= 80) {
-      return 'Excellent';
-    } else if (_score >= 60) {
-      return 'Good';
-    } else if (_score >= 40) {
-      return 'Average';
-    } else if (_score >= 20) {
-      return 'Poor';
-    } else {
-      return 'Very Poor';
-    }
-  }
-
-  Color _getScoreColor() {
-    if (_score >= 80) {
-      return Colors.green;
-    } else if (_score >= 60) {
-      return Colors.lightGreen;
-    } else if (_score >= 40) {
-      return Colors.orange;
-    } else {
-      return Colors.red;
-    }
-  }
-
-  void _showResult() {
-    showModalBottomSheet(
+  void _showIncompatibleProductDialog({
+    String title = "Incompatible Product",
+    String message =
+        "This doesn't appear to be a food product. Inside can analyze food ingredients and nutrition labels only. Please scan a food package or ingredient label.",
+  }) {
+    showDialog(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(28),
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+        actionsPadding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.block_rounded,
+                color: Colors.red,
+                size: 28,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
         ),
-      ),
-      builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.all(24),
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 45,
-                    height: 5,
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade300,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
+        content: Text(
+          message,
+          style: const TextStyle(
+            fontSize: 15,
+            color: Colors.black87,
+            height: 1.4,
+          ),
+        ),
+        actions: [
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
-
-                const SizedBox(height: 25),
-
-                const Center(
-                  child: Text(
-                    'Product Health Score',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+              ),
+              onPressed: () {
+                Navigator.of(ctx).pop();
+                _retake();
+              },
+              child: const Text(
+                'Scan Again',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
                 ),
-
-                const SizedBox(height: 25),
-
-                Center(
-                  child: Container(
-                    width: 130,
-                    height: 130,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: _getScoreColor(),
-                    ),
-                    child: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            '$_score',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 42,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const Text(
-                            '/ 100',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 15),
-
-                Center(
-                  child: Text(
-                    _getScoreLabel(),
-                    style: TextStyle(
-                      color: _getScoreColor(),
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 30),
-
-                const Text(
-                  'Extracted Ingredients / Text',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-
-                const SizedBox(height: 10),
-
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(15),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(15),
-                  ),
-                  child: Text(
-                    _extractedText,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      height: 1.5,
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 25),
-
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _retake();
-                    },
-                    child: const Text(
-                      'Scan Another Product',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 10),
-              ],
+              ),
             ),
           ),
-        );
-      },
+        ],
+      ),
+    );
+  }
+
+  void _showUnableToIdentifyDialog({
+    String title = "Unable to Identify Product",
+    String message =
+        "Please scan a clear image of the food package or ingredient label.",
+  }) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+        actionsPadding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.amber.shade50,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.search_off_rounded,
+                color: Colors.amber,
+                size: 28,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          message,
+          style: const TextStyle(
+            fontSize: 15,
+            color: Colors.black87,
+            height: 1.4,
+          ),
+        ),
+        actions: [
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onPressed: () {
+                Navigator.of(ctx).pop();
+                _retake();
+              },
+              child: const Text(
+                'Scan Again',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   void _retake() {
     setState(() {
       _capturedImage = null;
-      _extractedText = '';
-      _score = 0;
+      _isAnalyzing = false;
     });
   }
 

@@ -13,11 +13,15 @@
 .swiftpm/
 migrate_working_dir/
 
-# IntelliJ related
+# IntelliJ / IDE related
 *.iml
 *.ipr
 *.iws
 .idea/
+.vs/
+**/.vs/
+.kotlin/
+**/.kotlin/
 
 # The .vscode folder contains launch configuration and tasks you configure in
 # VS Code which you may wish to be included in version control, so this line
@@ -65,4 +69,12 @@ ios/Flutter/ephemeral/
 macos/Flutter/ephemeral/
 windows/flutter/ephemeral/
 linux/flutter/ephemeral/
+
+# Android Signing Credentials
+*.keystore
+*.jks
+key.properties
+android/key.properties
+**/key.properties
+
 

@@ -7,9 +7,41 @@ import '../../models/scan_result_model.dart';
 import '../../models/user_profile_model.dart';
 import '../../models/ingredient_model.dart';
 
+import '../utils/product_compatibility_checker.dart';
+
 class FreeScansExhaustedException implements Exception {
   final String message;
   FreeScansExhaustedException(this.message);
+  @override
+  String toString() => message;
+}
+
+class IncompatibleProductException implements Exception {
+  final String title;
+  final String message;
+  final List<String> reasons;
+
+  IncompatibleProductException({
+    this.title = ProductCompatibilityChecker.incompatibleTitle,
+    this.message = ProductCompatibilityChecker.incompatibleMessage,
+    this.reasons = const [],
+  });
+
+  @override
+  String toString() => message;
+}
+
+class UnableToIdentifyException implements Exception {
+  final String title;
+  final String message;
+  final List<String> reasons;
+
+  UnableToIdentifyException({
+    this.title = ProductCompatibilityChecker.unreadableTitle,
+    this.message = ProductCompatibilityChecker.unreadableMessage,
+    this.reasons = const [],
+  });
+
   @override
   String toString() => message;
 }
@@ -195,14 +227,64 @@ class ApiClient {
             ? (detail['message'] ?? 'You have used all 3 free scans.')
             : (detail?.toString() ?? 'You have used all 3 free scans.');
         throw FreeScansExhaustedException(msg);
+      } else if (response.statusCode == 422) {
+        final err = jsonDecode(response.body);
+        final detail = err['detail'];
+        if (detail is Map) {
+          final errType = detail['error']?.toString();
+          final title = detail['title']?.toString();
+          final msg = detail['message']?.toString();
+          final reasons = (detail['reasons'] as List<dynamic>?)
+                  ?.map((e) => e.toString())
+                  .toList() ??
+              [];
+
+          if (errType == 'INCOMPATIBLE_PRODUCT') {
+            throw IncompatibleProductException(
+              title: title ?? ProductCompatibilityChecker.incompatibleTitle,
+              message: msg ?? ProductCompatibilityChecker.incompatibleMessage,
+              reasons: reasons,
+            );
+          } else if (errType == 'UNABLE_TO_IDENTIFY') {
+            throw UnableToIdentifyException(
+              title: title ?? ProductCompatibilityChecker.unreadableTitle,
+              message: msg ?? ProductCompatibilityChecker.unreadableMessage,
+              reasons: reasons,
+            );
+          }
+        }
+        throw UnableToIdentifyException(
+          message: detail?.toString() ?? ProductCompatibilityChecker.unreadableMessage,
+        );
       } else {
         final err = jsonDecode(response.body);
         throw Exception(err['detail'] ?? 'Analysis failed');
       }
     } on FreeScansExhaustedException {
       rethrow;
+    } on IncompatibleProductException {
+      rethrow;
+    } on UnableToIdentifyException {
+      rethrow;
     } catch (e) {
-      // Offline fallback: Use client-side food science engine
+      // Offline fallback: Validate product compatibility first
+      final compat = ProductCompatibilityChecker.evaluate(ocrText);
+      if (compat.status == CompatibilityStatus.incompatible) {
+        throw IncompatibleProductException(
+          title: compat.title,
+          message: compat.message,
+          reasons: compat.reasons,
+        );
+      }
+      if (compat.status == CompatibilityStatus.unreadable) {
+        throw UnableToIdentifyException(
+          title: compat.title,
+          message: compat.message,
+          reasons: compat.reasons,
+        );
+      }
+
+      // Offline food analysis for verified food product only
       final fallbackResult = _generateOfflineAnalysis(
         ocrText,
         productName: productName,
@@ -409,25 +491,160 @@ class ApiClient {
     }
   }
 
-  // Offline intelligent food analysis fallback
+  // History: Update purchase decision and/or custom product name
+  Future<Map<String, dynamic>> updateScanDecisionOrName({
+    required int scanId,
+    String? customProductName,
+    String? purchaseDecision,
+  }) async {
+    final endpoint = '$baseUrl/history/$scanId';
+    try {
+      final Map<String, dynamic> body = {};
+      if (customProductName != null) {
+        body['custom_product_name'] = customProductName.trim();
+      }
+      if (purchaseDecision != null) {
+        body['purchase_decision'] = purchaseDecision.trim().toUpperCase();
+      }
+
+      final response = await http
+          .patch(
+            Uri.parse(endpoint),
+            headers: await _getHeaders(),
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return {'success': true, 'data': data};
+      } else {
+        final data = jsonDecode(response.body);
+        final errorMsg = data is Map ? (data['detail'] ?? 'Could not update scan') : 'Could not update scan';
+        return {'success': false, 'error': errorMsg.toString()};
+      }
+    } catch (e) {
+      debugPrint('[ApiClient] updateScanDecisionOrName error: $e');
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  // Offline intelligent food analysis fallback with universal extraction
   ScanResult _generateOfflineAnalysis(
     String ocrText, {
     String? productName,
     String? productCategory,
   }) {
+    final Map<String, dynamic> nutritionFacts = {};
+
+    // 1. Extract Nutrition Facts
+    final energyMatch = RegExp(r'\benergy(?:\s*value)?\s*(?:\(kcal\))?[:\-\s]*([0-9]+(?:\.[0-9]+)?)\s*(?:kcal)?\b', caseSensitive: false).firstMatch(ocrText) ??
+        RegExp(r'\b([0-9]+(?:\.[0-9]+)?)\s*kcal\b', caseSensitive: false).firstMatch(ocrText);
+    if (energyMatch != null) {
+      nutritionFacts['energy_kcal'] = double.tryParse(energyMatch.group(1) ?? '') ?? 0.0;
+    }
+
+    final proteinMatch = RegExp(r'\bprotein\s*(?:\(g\))?[:\-\s]*([0-9]+(?:\.[0-9]+)?)\s*g?\b', caseSensitive: false).firstMatch(ocrText);
+    if (proteinMatch != null) {
+      nutritionFacts['protein_g'] = double.tryParse(proteinMatch.group(1) ?? '') ?? 0.0;
+    }
+
+    final carbMatch = RegExp(r'\b(?:carbohydrates?|total\s*carbohydrates?|carbs?)\s*(?:\(g\))?[:\-\s]*([0-9]+(?:\.[0-9]+)?)\s*g?\b', caseSensitive: false).firstMatch(ocrText);
+    if (carbMatch != null) {
+      nutritionFacts['carbohydrates_g'] = double.tryParse(carbMatch.group(1) ?? '') ?? 0.0;
+    }
+
+    final sugarMatch = RegExp(r'\b(?:total\s*sugars?|sugars?)\s*(?:\(g\))?[:\-\s]*([0-9]+(?:\.[0-9]+)?)\s*g?\b', caseSensitive: false).firstMatch(ocrText);
+    if (sugarMatch != null) {
+      nutritionFacts['total_sugars_g'] = double.tryParse(sugarMatch.group(1) ?? '') ?? 0.0;
+    }
+
+    final fatMatch = RegExp(r'\b(?:total\s*fat|fat)\s*(?:\(g\))?[:\-\s]*([0-9]+(?:\.[0-9]+)?)\s*g?\b', caseSensitive: false).firstMatch(ocrText);
+    if (fatMatch != null) {
+      nutritionFacts['total_fat_g'] = double.tryParse(fatMatch.group(1) ?? '') ?? 0.0;
+    }
+
+    final sodiumMatch = RegExp(r'\bsodium\s*(?:\(mg\))?[:\-\s]*([0-9]+(?:\.[0-9]+)?)\s*mg?\b', caseSensitive: false).firstMatch(ocrText);
+    if (sodiumMatch != null) {
+      nutritionFacts['sodium_mg'] = double.tryParse(sodiumMatch.group(1) ?? '') ?? 0.0;
+    }
+
+    // 2. Isolate Ingredient Section
+    String textToSearch = ocrText;
+    final headerMatch = RegExp(r'\b(?:ingredients|ingredients\s*used|ingredients\s*list|composition|contents)\s*[:\-\s]', caseSensitive: false).firstMatch(textToSearch);
+    if (headerMatch != null) {
+      textToSearch = textToSearch.substring(headerMatch.end);
+    } else {
+      final hasAdditives = RegExp(r'\b(?:ins|e)\s*\d{3,4}\b', caseSensitive: false).hasMatch(textToSearch);
+      final commaCount = ','.allMatches(textToSearch).length;
+      if (!hasAdditives && commaCount < 3) {
+        throw UnableToIdentifyException(
+          title: "Unable to Identify Ingredients",
+          message: "No ingredient list was detected on this label. Please scan the 'Ingredients' section directly.",
+        );
+      }
+    }
+
+    // Cutoff at allergens, manufacturing, or packaging boilerplate
+    final cutoffMatch = RegExp(
+      r'\b(?:allergen\s+(?:advice|declaration|information)|contains\s*[:\-\s]|may\s+contain|manufactured\s+by|mfd|marketed\s+by|fssai|lic\.?\s*no|best\s+before|use\s+by|net\s*wt|mrp|nutrition)\b',
+      caseSensitive: false,
+    ).firstMatch(textToSearch);
+    if (cutoffMatch != null && cutoffMatch.start > 0) {
+      textToSearch = textToSearch.substring(0, cutoffMatch.start);
+    }
+
+    // 3. Parenthesis-aware Tokenizer
+    final List<String> rawTokens = [];
+    final StringBuffer currentToken = StringBuffer();
+    int parenDepth = 0;
+
+    for (int i = 0; i < textToSearch.length; i++) {
+      final char = textToSearch[i];
+      if (char == '(') {
+        parenDepth++;
+        currentToken.write(char);
+      } else if (char == ')') {
+        if (parenDepth > 0) parenDepth--;
+        currentToken.write(char);
+      } else if ((char == ',' || char == ';' || char == '•' || char == '\n' || char == '|') && parenDepth == 0) {
+        final t = currentToken.toString().trim();
+        if (t.isNotEmpty) rawTokens.add(t);
+        currentToken.clear();
+      } else {
+        currentToken.write(char);
+      }
+    }
+    final lastT = currentToken.toString().trim();
+    if (lastT.isNotEmpty) rawTokens.add(lastT);
+
+    // 4. Token Filtering
     final List<IngredientItem> items = [];
     int avoidCount = 0;
     int cautionCount = 0;
 
-    final tokens = ocrText
-        .replaceAll(RegExp(r'ingredients\s*:', caseSensitive: false), '')
-        .split(RegExp(r'[,;•\n]'))
-        .map((s) => s.trim())
-        .where((s) => s.length > 1)
-        .toList();
+    final brandBlacklist = {
+      'britannia', 'parle', 'nestle', 'cadbury', 'mondelez', 'lays', "lay's",
+      'haldiram', 'haldirams', 'itc', 'sunfeast', 'oreo', 'kellogg', "kellogg's",
+      'maggi', 'good day', 'thums up', 'coca-cola', 'pepsi', 'amul'
+    };
 
-    for (final raw in tokens) {
-      final l = raw.toLowerCase();
+    final headingBlacklist = {
+      'biscuits', 'cookies', 'crackers', 'chips', 'potato chips', 'chocolate',
+      'milk chocolate', 'soft drink', 'tomato ketchup', 'sauce'
+    };
+
+    for (final raw in rawTokens) {
+      String cleaned = raw.replaceAll(RegExp(r'^[\s\d\.\-\*\•\:\,\;\|\~]+|[\s\.\,\;\:\-\*\|\~]+$'), '').trim();
+      cleaned = cleaned.replaceAll(RegExp(r'^contains\s+(?:added\s+)?', caseSensitive: false), '').trim();
+      final l = cleaned.toLowerCase();
+
+      if (cleaned.length < 2 || !RegExp(r'[a-zA-Z]').hasMatch(cleaned)) continue;
+      if (brandBlacklist.contains(l)) continue;
+      if (headingBlacklist.contains(l)) continue;
+      if (RegExp(r'^(?:energy|protein|fat|carbohydrate|sugars?|sodium|fssai|lic|net\s*wt|mrp|best\s*before)\b', caseSensitive: false).hasMatch(l)) continue;
+      if (RegExp(r'^(?:100\%\s*(?:veg|vegetarian|real|natural|pure|whole\s*grain)|no\s*(?:added\s*preservatives|artificial\s*colours?|preservatives|trans\s*fat)|zero\s*(?:trans\s*fat|cholesterol|sugar|calories)|(?:high|rich\s*in)\s*(?:protein|fiber|fibre|iron|calcium)|serving\s*suggestion)$', caseSensitive: false).hasMatch(l)) continue;
+
       String status = 'GOOD';
       String reason = 'Common food ingredient.';
       String cat = 'General';
@@ -468,12 +685,19 @@ class ApiClient {
       }
 
       items.add(IngredientItem(
-        name: raw,
-        normalizedName: raw,
+        name: cleaned,
+        normalizedName: cleaned,
         status: status,
         reason: reason,
         category: cat,
       ));
+    }
+
+    if (items.isEmpty) {
+      throw UnableToIdentifyException(
+        title: "Unable to Identify Ingredients",
+        message: "No ingredient list was detected on this label. Please scan the 'Ingredients' section directly.",
+      );
     }
 
     final score = (100 - (avoidCount * 28) - (cautionCount * 10)).clamp(15, 100);
@@ -540,6 +764,10 @@ class ApiClient {
         'Check product label for complete allergens and manufacturing details.',
       ],
       rawOcrText: ocrText,
+      isCompatible: true,
+      compatibilityStatus: 'COMPATIBLE',
+      compatibilityMessage: 'Food product label verified.',
+      nutritionFacts: nutritionFacts,
     );
   }
 }

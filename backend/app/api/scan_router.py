@@ -6,15 +6,51 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from backend.app.database.session import get_db
 from backend.app.models.entities import User, UserProfile, ScanHistory
-from backend.app.schemas.api_schemas import ScanTextRequest, ScanAnalysisResult, IngredientItemAnalysis
+from backend.app.schemas.api_schemas import (
+    ScanTextRequest, ScanAnalysisResult, IngredientItemAnalysis,
+    ScoreBreakdown, ScoreBreakdownItem,
+)
 from backend.app.security.auth import get_optional_user
-from backend.app.ocr.processor import process_raw_label
+from backend.app.ocr.processor import process_raw_label, process_food_label
 from backend.app.services.analysis_engine import analyze_ingredients_list
+from backend.app.services.product_compatibility import (
+    evaluate_product_compatibility,
+    CompatibilityStatus,
+    INCOMPATIBLE_TITLE,
+    INCOMPATIBLE_MESSAGE,
+    UNREADABLE_TITLE,
+    UNREADABLE_MESSAGE,
+)
 from backend.app.config import settings
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Scanning & Analysis"])
+
+
+def _build_score_breakdown(data: dict) -> Optional[ScoreBreakdown]:
+    """Convert raw score_breakdown dict from analysis_engine into a typed schema."""
+    raw = data.get("score_breakdown")
+    if not raw:
+        return None
+    try:
+        return ScoreBreakdown(
+            base_score=raw.get("base_score", 100),
+            assessment_type=raw.get("assessment_type", "FULL_NUTRITIONAL_AND_INGREDIENT"),
+            assessment_label=raw.get("assessment_label", "Verified Ingredients & Nutrition Facts"),
+            deductions=[ScoreBreakdownItem(**d) for d in raw.get("deductions", [])],
+            bonuses=[ScoreBreakdownItem(**b) for b in raw.get("bonuses", [])],
+            final_score=raw.get("final_score", data.get("score", 0)),
+            good_count=raw.get("good_count", 0),
+            caution_count=raw.get("caution_count", 0),
+            avoid_count=raw.get("avoid_count", 0),
+            nutrition_integrated=raw.get("nutrition_integrated", False),
+            disclaimer=raw.get("disclaimer", ScoreBreakdown.model_fields["disclaimer"].default),
+        )
+    except Exception as exc:
+        logger.warning(f"Could not build ScoreBreakdown: {exc}")
+        return None
+
 
 @router.post("/scan", response_model=ScanAnalysisResult)
 def scan_and_analyze(
@@ -22,12 +58,35 @@ def scan_and_analyze(
     user: Optional[User] = Depends(get_optional_user),
     db: Session = Depends(get_db)
 ):
-    # Quick sanity check on OCR text input
-    if not request.ocr_text or len(request.ocr_text.strip()) < 3:
+    # Validate product compatibility before scoring or consuming quota
+    compat_check = evaluate_product_compatibility(
+        ocr_text=request.ocr_text,
+        product_name=request.product_name,
+        product_category=request.product_category
+    )
+
+    if compat_check.status == CompatibilityStatus.INCOMPATIBLE:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Image or text isn't clear enough. Please ensure the ingredient list is readable."
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": "INCOMPATIBLE_PRODUCT",
+                "title": compat_check.title,
+                "message": compat_check.message,
+                "reasons": compat_check.reasons
+            }
         )
+
+    if compat_check.status == CompatibilityStatus.UNREADABLE:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": "UNABLE_TO_IDENTIFY",
+                "title": compat_check.title,
+                "message": compat_check.message,
+                "reasons": compat_check.reasons
+            }
+        )
+
 
     # 1. Handle Idempotency (Retry protection)
     if user and request.idempotency_key:
@@ -54,7 +113,8 @@ def scan_and_analyze(
                     category=ing.get("category", "General"),
                     vegetarian_status=ing.get("vegetarian_status", "YES"),
                     vegan_status=ing.get("vegan_status", "YES"),
-                    allergen_info=ing.get("allergen_info")
+                    allergen_info=ing.get("allergen_info"),
+                    source=ing.get("source"),
                 )
                 for ing in details
             ]
@@ -71,7 +131,13 @@ def scan_and_analyze(
                 warnings=warns,
                 recommendations=recs,
                 raw_ocr_text=existing_scan.raw_ocr_text,
-                created_at=existing_scan.created_at.isoformat()
+                created_at=existing_scan.created_at.isoformat(),
+                is_compatible=True,
+                compatibility_status="COMPATIBLE",
+                compatibility_message="Food product label verified.",
+                custom_product_name=existing_scan.custom_product_name,
+                purchase_decision=existing_scan.purchase_decision,
+                nutrition_facts=json.loads(existing_scan.nutrition_facts) if getattr(existing_scan, 'nutrition_facts', None) and existing_scan.nutrition_facts else {},
             )
 
     scan_id = None
@@ -113,12 +179,17 @@ def scan_and_analyze(
             user_profile = db.query(UserProfile).filter(UserProfile.user_id == locked_user.id).first()
 
         # Step 4: Perform OCR and AI analysis
-        parsed_ingredients, cleaned_section = process_raw_label(request.ocr_text)
+        parsed_ingredients, nutrition_facts, cleaned_section = process_food_label(request.ocr_text)
 
         if not parsed_ingredients:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Could not detect any ingredient items. Try adjusting camera angle or lighting."
+                detail={
+                    "error": "UNABLE_TO_IDENTIFY",
+                    "title": "Unable to Identify Ingredients",
+                    "message": "Could not detect a clear ingredient list on this package. Please scan the ingredients or nutrition label directly.",
+                    "reasons": ["Ingredient list missing, blurry, or unreadable on scanned package surface"]
+                }
             )
 
         analysis_data = analyze_ingredients_list(
@@ -127,7 +198,8 @@ def scan_and_analyze(
             profile=user_profile,
             provided_product_name=request.product_name,
             provided_product_category=request.product_category,
-            raw_ocr_text=request.ocr_text
+            raw_ocr_text=request.ocr_text,
+            nutrition_facts=nutrition_facts
         )
 
         detected_product_name = analysis_data["product_name"]
@@ -150,6 +222,7 @@ def scan_and_analyze(
                 ingredient_details=json.dumps(analysis_data["ingredients"]),
                 warnings=json.dumps(analysis_data["warnings"]),
                 recommendations=json.dumps(analysis_data["recommendations"]),
+                nutrition_facts=json.dumps(nutrition_facts),
                 created_at=datetime.datetime.now(datetime.timezone.utc)
             )
             db.add(history_entry)
@@ -218,7 +291,8 @@ def scan_and_analyze(
             category=ing["category"],
             vegetarian_status=ing.get("vegetarian_status", "YES"),
             vegan_status=ing.get("vegan_status", "YES"),
-            allergen_info=ing.get("allergen_info")
+            allergen_info=ing.get("allergen_info"),
+            source=ing.get("source"),
         )
         for ing in analysis_data["ingredients"]
     ]
@@ -230,10 +304,17 @@ def scan_and_analyze(
         ingredient_count=len(formatted_ingredients),
         overall_status=analysis_data["overall_status"],
         score=analysis_data["score"],
+        score_breakdown=_build_score_breakdown(analysis_data),
+        positive_findings=analysis_data.get("positive_findings", []),
         summary=analysis_data["summary"],
         ingredients=formatted_ingredients,
         warnings=analysis_data["warnings"],
         recommendations=analysis_data["recommendations"],
         raw_ocr_text=cleaned_section,
-        created_at=datetime.datetime.now(datetime.timezone.utc).isoformat()
+        created_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        is_compatible=True,
+        compatibility_status="COMPATIBLE",
+        compatibility_message="Food product label verified.",
+        nutrition_facts=nutrition_facts,
+        assessment_type=analysis_data.get("assessment_type", "INGREDIENT_ONLY")
     )
