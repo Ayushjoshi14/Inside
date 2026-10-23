@@ -7,10 +7,22 @@ from backend.app.database.session import Base
 def get_utc_now():
     return datetime.datetime.now(datetime.timezone.utc)
 
+# Cross-dialect CHECK constraint for the free-scan cap.
+# `IS TRUE` is ANSI SQL, accepted by both PostgreSQL (Boolean column) and
+# SQLite >= 3.23.0 (2018-04-02, bundled with Python 3.6+).
+# The old `is_premium = TRUE` compiled to `is_premium = 1` on SQLite
+# which PostgreSQL rejected because its Boolean type does not accept integer literals.
+_SCAN_LIMIT_CHECK = (
+    "free_scans_used >= 0 AND (free_scans_used <= 3 OR is_premium IS TRUE)"
+)
+
 class User(Base):
     __tablename__ = "users"
     __table_args__ = (
-        CheckConstraint("free_scans_used >= 0 AND (free_scans_used <= 3 OR is_premium = 1)", name="check_free_scans_limit"),
+        CheckConstraint(
+            _SCAN_LIMIT_CHECK,
+            name="check_free_scans_limit",
+        ),
     )
 
     id = Column(Integer, primary_key=True, index=True)
@@ -22,7 +34,6 @@ class User(Base):
     scans_count = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime, default=get_utc_now)
     premium_granted_at = Column(DateTime, nullable=True)
-
     profile = relationship("UserProfile", back_populates="user", uselist=False, cascade="all, delete-orphan")
     scans = relationship("ScanHistory", back_populates="user", cascade="all, delete-orphan")
     purchases = relationship("PurchaseVerification", back_populates="user", cascade="all, delete-orphan")
@@ -106,6 +117,9 @@ class ScanHistory(Base):
     ingredient_details = Column(Text, default="[]")  # JSON array of structured items
     warnings = Column(Text, default="[]")  # JSON array of warning strings
     recommendations = Column(Text, default="[]")  # JSON array of recommendations
+    custom_product_name = Column(String(255), nullable=True)
+    purchase_decision = Column(String(10), nullable=True)  # "YES", "NO", or None
+    nutrition_facts = Column(Text, default="{}")  # JSON map of extracted nutrients
     created_at = Column(DateTime, default=get_utc_now, index=True)
 
     user = relationship("User", back_populates="scans")
